@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/src-d/gitcollector"
+	"github.com/src-d/gitcollector/library"
 
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,7 @@ func TestGHProvider(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	queue := make(chan *gitcollector.Job, 10)
+	queue := make(chan gitcollector.Job, 10)
 	provider := NewGHProvider(
 		org,
 		"", //token
@@ -26,25 +27,22 @@ func TestGHProvider(t *testing.T) {
 		&GHProviderOpts{TimeNewRepos: 2 * time.Second},
 	)
 
-	require.NoError(provider.Stop())
-	require.True(ErrProviderStop.Is(provider.Stop()))
-	require.True(ErrProviderStop.Is(provider.Start()))
-
 	go func() {
-	Loop:
 		for {
 			select {
 			case job := <-queue:
-				require.Len(job.Endpoints, 3)
-				for _, ep := range job.Endpoints {
+				j, ok := job.(*library.Job)
+				require.True(ok)
+				require.Len(j.Endpoints, 3)
+				for _, ep := range j.Endpoints {
 					require.True(strings.Contains(ep, org))
 				}
 			case <-time.After(timeToStop):
 				require.NoError(provider.Stop())
-				break Loop
+				return
 			}
 		}
 	}()
 
-	require.True(ErrProviderStop.Is(provider.Start()))
+	require.True(gitcollector.ErrProviderStopped.Is(provider.Start()))
 }
