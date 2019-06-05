@@ -52,9 +52,9 @@ type JobScheduler struct {
 var _ gitcollector.JobScheduler = (*JobScheduler)(nil)
 
 const (
-	schedCapacity     = 1000
-	retriveJobTimeout = 3 * time.Second
-	waitNewJobs       = 30 * time.Second
+	schedCapacity      = 1000
+	retrieveJobTimeout = 3 * time.Second
+	waitNewJobs        = 30 * time.Second
 )
 
 var (
@@ -120,11 +120,16 @@ func (s *JobScheduler) schedule() (gitcollector.Job, error) {
 		return nil, errNewJobsNotFound.New()
 	}
 
-	if rand.Intn(10) == 0 && len(s.update) > 0 {
-		return s.getJobFrom(s.update)
+	var queue chan *Job
+	if len(s.download) > 0 {
+		queue = s.download
 	}
 
-	return s.getJobFrom(s.download)
+	if len(s.download) == 0 || (len(s.update) > 0 && rand.Intn(10) == 0) {
+		queue = s.update
+	}
+
+	return s.getJobFrom(queue)
 }
 
 func (s *JobScheduler) getJobFrom(queue chan *Job) (*Job, error) {
@@ -139,7 +144,7 @@ func (s *JobScheduler) getJobFrom(queue chan *Job) (*Job, error) {
 		}
 
 		return job, nil
-	case <-time.After(retriveJobTimeout):
+	case <-time.After(retrieveJobTimeout):
 		return nil, errNewJobsNotFound.New()
 	}
 }
