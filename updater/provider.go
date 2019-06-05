@@ -11,10 +11,15 @@ import (
 
 // UpdatesProviderOpts represents configuration options for an UpdatesProvider.
 type UpdatesProviderOpts struct {
-	TriggerOnce     bool
+	// TriggerOnce triggers the update just once and exits.
+	TriggerOnce bool
+	// TriggerInterval is the time interval elapsed between updates.
 	TriggerInterval time.Duration
-	EnqueueTimeout  time.Duration
-	StopTimeout     time.Duration
+	// EnqueueTimeout is the time a job waits to be enqueued.
+	EnqueueTimeout time.Duration
+	// StopTimeout is the time the service waits to be stopped after a Stop
+	// call is performed.
+	StopTimeout time.Duration
 }
 
 // UpdatesProvider is gitcollector.Provider implementation. It will periodically
