@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/src-d/gitcollector"
+	"github.com/src-d/gitcollector/downloader"
+	"github.com/src-d/gitcollector/library"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/google/go-github/github"
@@ -17,56 +19,61 @@ var (
 	// endpoints for a certain repository.
 	ErrEndpointsNotFound = errors.NewKind("endpoinds not found for %s")
 
-	// ErrProviderStop is returned when a provider has been stopped.
-	ErrProviderStop = errors.NewKind("provider stopped")
-
-	// ErrNewRepositoriesNotFound is returned when there aren't new repositories
-	// in the organization.
-	ErrNewRepositoriesNotFound = errors.NewKind("couldn't find new repositories")
+	// ErrNewRepositoriesNotFound is returned when there aren't new
+	// repositories in the organization.
+	ErrNewRepositoriesNotFound = errors.NewKind(
+		"couldn't find new repositories")
 )
-
-// Provider interface represents the service to retrieve repositories from a
-// organization.
-type Provider interface {
-	Start() error
-	Stop() error
-}
 
 // GHProviderOpts represents configuration options for a GHProvider.
 type GHProviderOpts struct {
 	HTTPTimeout    time.Duration
 	ResultsPerPage int
 	TimeNewRepos   time.Duration
+	StopTimeout    time.Duration
 }
 
-// GHProvider will retrieve the information for all the repositories for the given
-// github organization.
+// GHProvider is a gitcollector.Provider implementation. It will retrieve the
+// information for all the repositories for the given github organization
+// to produce gitcollector.Jobs.
 type GHProvider struct {
 	iter   *orgReposIter
-	queue  chan<- *gitcollector.Job
+	queue  chan<- gitcollector.Job
 	cancel chan struct{}
 }
+
+var _ gitcollector.Provider = (*GHProvider)(nil)
+
+const stopTimeout = 500 * time.Microsecond
 
 // NewGHProvider builds a new Provider
 func NewGHProvider(
 	org, token string,
-	queue chan<- *gitcollector.Job,
+	queue chan<- gitcollector.Job,
 	opts *GHProviderOpts,
 ) *GHProvider {
+	if opts == nil {
+		opts = &GHProviderOpts{}
+	}
+
+	if opts.StopTimeout <= 0 {
+		opts.StopTimeout = stopTimeout
+	}
+
 	return &GHProvider{
 		iter:   newOrgReposIter(org, token, opts),
 		queue:  queue,
-		cancel: make(chan struct{}, 1),
+		cancel: make(chan struct{}),
 	}
 }
 
-// Start implements the Provider interface.
+// Start implements the gitcollector.Provider interface.
 func (p *GHProvider) Start() error {
 	// TODO: Add logging
 	for {
 		select {
 		case <-p.cancel:
-			return ErrProviderStop.New()
+			return gitcollector.ErrProviderStopped.New()
 		default:
 			repo, retry, err := p.iter.Next()
 			if err != nil {
@@ -74,7 +81,12 @@ func (p *GHProvider) Start() error {
 					return err
 				}
 
-				time.Sleep(retry)
+				select {
+				case <-time.After(retry):
+				case <-p.cancel:
+					return gitcollector.ErrProviderStopped.New()
+				}
+
 				continue
 			}
 
@@ -84,7 +96,11 @@ func (p *GHProvider) Start() error {
 				continue
 			}
 
-			p.queue <- gitcollector.NewJob(endpoints, repo.GetFork())
+			p.queue <- &library.Job{
+				Endpoints: endpoints,
+				IsFork:    repo.GetFork(),
+				ProcessFn: downloader.Download,
+			}
 		}
 	}
 }
@@ -111,15 +127,13 @@ func getEndpoints(r *github.Repository) ([]string, error) {
 	return endpoints, nil
 }
 
-const stopTimeout = 2 * time.Microsecond
-
-// Stop implements the Provider interface
+// Stop implements the gitcollector.Provider interface
 func (p *GHProvider) Stop() error {
 	select {
 	case p.cancel <- struct{}{}:
 		return nil
 	case <-time.After(stopTimeout):
-		return ErrProviderStop.New()
+		return gitcollector.ErrProviderStop.New()
 	}
 }
 
@@ -241,9 +255,9 @@ func timeToRetry(res *github.Response) time.Duration {
 	timeToReset := time.Duration(resetTime-now) * time.Second
 	remaining := res.Rate.Remaining
 	if timeToReset < 0 || timeToReset > 1*time.Hour {
-		// If this happens, the system clock is probably wrong, so we assume we
-		// are at the beginning of the window and consider only total requests
-		// per hour.
+		// If this happens, the system clock is probably wrong, so we
+		// assume we are at the beginning of the window and consider
+		// only total requests per hour.
 		timeToReset = 1 * time.Hour
 		remaining = res.Rate.Limit
 	}

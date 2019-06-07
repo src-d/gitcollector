@@ -7,6 +7,7 @@ matrix:
   fast_finish: true
 
 script:
+  - GO111MODULE=on
   - make ci-script
 
 jobs:
