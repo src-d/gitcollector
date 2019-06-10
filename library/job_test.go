@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/src-d/gitcollector"
-	"github.com/src-d/gitcollector/workerpool"
 	"gopkg.in/src-d/go-log.v1"
 
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ func TestJobAndJobScheduler(t *testing.T) {
 
 	download := make(chan gitcollector.Job, 20)
 	update := make(chan gitcollector.Job, 20)
-	wp := workerpool.New(gitcollector.NewJobScheduler(
+	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
 		NewJobScheduleFn(
 			nil,
 			download, update,

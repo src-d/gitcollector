@@ -1,21 +1,20 @@
-package workerpool
+package gitcollector
 
 import (
 	"context"
 
-	"github.com/src-d/gitcollector"
 	"gopkg.in/src-d/go-errors.v1"
 )
 
 // Worker is in charge of process gitcollector.Jobs.
 type Worker struct {
 	id     string
-	jobs   chan gitcollector.Job
+	jobs   chan Job
 	cancel chan bool
 }
 
 // NewWorker builds a new Worker.
-func NewWorker(jobs chan gitcollector.Job) *Worker {
+func NewWorker(jobs chan Job) *Worker {
 	return &Worker{
 		jobs:   jobs,
 		cancel: make(chan bool),

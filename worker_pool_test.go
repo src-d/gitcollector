@@ -1,11 +1,9 @@
-package workerpool
+package gitcollector
 
 import (
 	"context"
 	"sync"
 	"testing"
-
-	"github.com/src-d/gitcollector"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,13 +12,13 @@ func TestWorkerPool(t *testing.T) {
 	var require = require.New(t)
 	require.True(true)
 
-	queue := make(chan gitcollector.Job, 20)
+	queue := make(chan Job, 20)
 	sched := &testScheduler{
 		queue:  queue,
 		cancel: make(chan struct{}),
 	}
 
-	wp := New(sched)
+	wp := NewWorkerPool(sched)
 
 	numWorkers := []int{2, 8, 0}
 	for _, n := range numWorkers {
@@ -59,7 +57,7 @@ func TestWorkerPool(t *testing.T) {
 	wp.Close()
 	require.ElementsMatch(ids, got)
 
-	queue = make(chan gitcollector.Job, 20)
+	queue = make(chan Job, 20)
 	sched.queue = queue
 	wp.SetWorkers(20)
 	wp.Run()
@@ -77,7 +75,7 @@ type testJob struct {
 	process func(id string) error
 }
 
-var _ gitcollector.Job = (*testJob)(nil)
+var _ Job = (*testJob)(nil)
 
 func (j *testJob) Process(_ context.Context) error {
 	if j.process == nil {
@@ -88,10 +86,10 @@ func (j *testJob) Process(_ context.Context) error {
 }
 
 type testScheduler struct {
-	queue  chan gitcollector.Job
+	queue  chan Job
 	cancel chan struct{}
 }
 
-func (s *testScheduler) Jobs() chan gitcollector.Job { return s.queue }
-func (s *testScheduler) Schedule()                   { s.cancel <- struct{}{} }
-func (s *testScheduler) Finish()                     {}
+func (s *testScheduler) Jobs() chan Job { return s.queue }
+func (s *testScheduler) Schedule()      { s.cancel <- struct{}{} }
+func (s *testScheduler) Finish()        {}

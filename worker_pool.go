@@ -1,21 +1,19 @@
-package workerpool
+package gitcollector
 
 import (
 	"sync"
-
-	"github.com/src-d/gitcollector"
 )
 
 // WorkerPool holds a pool of workers.
 type WorkerPool struct {
-	scheduler gitcollector.JobScheduler
+	scheduler JobScheduler
 	workers   []*Worker
 	resize    chan struct{}
 	wg        sync.WaitGroup
 }
 
-// New builds a new WorkerPool.
-func New(scheduler gitcollector.JobScheduler) *WorkerPool {
+// NewWorkerPool builds a new WorkerPool.
+func NewWorkerPool(scheduler JobScheduler) *WorkerPool {
 	resize := make(chan struct{}, 1)
 	resize <- struct{}{}
 	return &WorkerPool{
