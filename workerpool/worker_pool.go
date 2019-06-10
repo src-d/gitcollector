@@ -29,6 +29,14 @@ func (wp *WorkerPool) Run() {
 	go func() { wp.scheduler.Schedule() }()
 }
 
+// Size returns the current number of workers in the pool.
+func (wp *WorkerPool) Size() int {
+	<-wp.resize
+	defer func() { wp.resize <- struct{}{} }()
+
+	return len(wp.workers)
+}
+
 // SetWorkers set the number of Workers in the pool to n.
 func (wp *WorkerPool) SetWorkers(n int) {
 	<-wp.resize
@@ -79,6 +87,12 @@ func (wp *WorkerPool) remove(n int) {
 
 	wp.workers = wp.workers[:i]
 	wg.Wait()
+}
+
+// Wait waits for the workers to finish. A worker will finish when the queue to
+// retrieve jobs from is closed.
+func (wp *WorkerPool) Wait() {
+	wp.wg.Wait()
 }
 
 // Close stops all the workers in the pool waiting for the jobs to finish.

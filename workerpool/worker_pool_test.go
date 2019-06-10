@@ -15,17 +15,17 @@ func TestWorkerPool(t *testing.T) {
 	require.True(true)
 
 	queue := make(chan gitcollector.Job, 20)
-	wp := New(
-		&testScheduler{
-			queue:  queue,
-			cancel: make(chan struct{}),
-		},
-	)
+	sched := &testScheduler{
+		queue:  queue,
+		cancel: make(chan struct{}),
+	}
+
+	wp := New(sched)
 
 	numWorkers := []int{2, 8, 0}
 	for _, n := range numWorkers {
 		wp.SetWorkers(n)
-		require.Len(wp.workers, n)
+		require.Equal(wp.Size(), n)
 	}
 
 	var (
@@ -34,14 +34,10 @@ func TestWorkerPool(t *testing.T) {
 		}
 
 		mu      sync.Mutex
-		wg      sync.WaitGroup
 		got     []string
 		process = func(id string) error {
 			mu.Lock()
-			defer func() {
-				wg.Done()
-				mu.Unlock()
-			}()
+			defer mu.Unlock()
 
 			got = append(got, id)
 			return nil
@@ -51,18 +47,20 @@ func TestWorkerPool(t *testing.T) {
 	wp.SetWorkers(10)
 	wp.Run()
 
-	wg.Add(len(ids))
 	for _, id := range ids {
 		queue <- &testJob{
 			id:      id,
 			process: process,
 		}
 	}
+	close(queue)
 
-	wg.Wait()
+	wp.Wait()
 	wp.Close()
 	require.ElementsMatch(ids, got)
 
+	queue = make(chan gitcollector.Job, 20)
+	sched.queue = queue
 	wp.SetWorkers(20)
 	wp.Run()
 
