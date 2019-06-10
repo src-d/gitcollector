@@ -18,9 +18,15 @@ func TestJobAndJobScheduler(t *testing.T) {
 
 	download := make(chan gitcollector.Job, 20)
 	update := make(chan gitcollector.Job, 20)
-	wp := workerpool.New(
-		NewJobScheduler(download, update, nil, nil, log.New(nil)),
-	)
+	wp := workerpool.New(gitcollector.NewJobScheduler(
+		NewJobScheduleFn(
+			nil,
+			download, update,
+			log.New(nil),
+			nil,
+		),
+		&gitcollector.JobSchedulerOpts{},
+	))
 
 	var (
 		endpoints = []string{

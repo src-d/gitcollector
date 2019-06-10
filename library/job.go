@@ -45,106 +45,61 @@ func (j *Job) Process(ctx context.Context) error {
 	return j.ProcessFn(ctx, j)
 }
 
-// JobScheduler is a gitcollector.JobScheduler implementation to schedule Jobs.
-type JobScheduler struct {
-	lib       borges.Library
-	temp      billy.Filesystem
-	download  chan gitcollector.Job
-	update    chan gitcollector.Job
-	jobs      chan gitcollector.Job
-	cancel    chan struct{}
-	jobLogger log.Logger
-}
-
-var _ gitcollector.JobScheduler = (*JobScheduler)(nil)
-
-const (
-	schedCapacity      = 1000
-	retrieveJobTimeout = 3 * time.Second
-	waitNewJobs        = 30 * time.Second
-)
-
 var (
-	errNewJobsNotFound = errors.NewKind("couldn't find new jobs to schedule")
-	errClosedChannel   = errors.NewKind("channel is closed")
-	errWrongJob        = errors.NewKind("wrong job found")
-	errNotJobID        = errors.NewKind("couldn't assign an ID to a job")
+	errWrongJob = errors.NewKind("wrong job found")
+	errNotJobID = errors.NewKind("couldn't assign an ID to a job")
 )
 
-// NewJobScheduler builds a new JobScheduler.
-func NewJobScheduler(
-	download, update chan gitcollector.Job,
+// NewJobScheduleFn builds a new gitcollector.ScheduleFn that schedules download
+// and update jobs in different queues.
+func NewJobScheduleFn(
 	lib borges.Library,
+	download,
+	update chan gitcollector.Job,
+	jobLogger log.Logger,
 	temp billy.Filesystem,
-	joblogger log.Logger,
-) *JobScheduler {
-	return &JobScheduler{
-		lib:       lib,
-		temp:      temp,
-		download:  download,
-		update:    update,
-		jobs:      make(chan gitcollector.Job, schedCapacity),
-		cancel:    make(chan struct{}),
-		jobLogger: joblogger,
-	}
-}
-
-// Jobs implements the gitcollector.JobScheduler interface.
-func (s *JobScheduler) Jobs() chan gitcollector.Job {
-	return s.jobs
-}
-
-// Finish implements the gitcollector.JobScheduler interface.
-func (s *JobScheduler) Finish() {
-	s.cancel <- struct{}{}
-}
-
-// Schedule implements the gitcollector.JobScheduler interface.
-func (s *JobScheduler) Schedule() {
-	for {
-		select {
-		case <-s.cancel:
-			return
-		default:
-			job, err := s.schedule()
-			if err != nil {
-				if errNewJobsNotFound.Is(err) {
-					select {
-					case <-s.cancel:
-						return
-					case <-time.After(waitNewJobs):
-					}
-				}
-
-				continue
-			}
-
-			select {
-			case s.jobs <- job:
-			case <-s.cancel:
-				return
-			}
+) gitcollector.ScheduleFn {
+	return func(
+		opts *gitcollector.JobSchedulerOpts,
+	) (gitcollector.Job, error) {
+		if len(download) == 0 && len(update) == 0 {
+			return nil, gitcollector.ErrNewJobsNotFound.New()
 		}
+
+		var (
+			job *Job
+			err error
+		)
+
+		if len(download) > 0 {
+			job, err = jobFrom(download, opts.JobTimeout)
+		} else {
+			job, err = jobFrom(update, opts.JobTimeout)
+		}
+
+		if err != nil {
+			// check errors
+		}
+
+		if job.Lib == nil {
+			job.Lib = lib
+		}
+
+		// download job
+		if job.TempFS == nil && len(job.Endpoints) > 0 {
+			job.TempFS = temp
+		}
+
+		job.Logger = jobLogger
+		return job, nil
 	}
 }
 
-func (s *JobScheduler) schedule() (gitcollector.Job, error) {
-	if len(s.download) == 0 && len(s.update) == 0 {
-		return nil, errNewJobsNotFound.New()
-	}
-
-	if len(s.download) > 0 {
-		return s.getJobFrom(s.download)
-	}
-
-	return s.getJobFrom(s.update)
-}
-
-func (s *JobScheduler) getJobFrom(queue chan gitcollector.Job) (*Job, error) {
+func jobFrom(queue chan gitcollector.Job, timeout time.Duration) (*Job, error) {
 	select {
 	case j, ok := <-queue:
 		if !ok {
-			return nil, errClosedChannel.New()
+			return nil, gitcollector.ErrClosedChannel.New()
 		}
 
 		job, ok := j.(*Job)
@@ -158,18 +113,9 @@ func (s *JobScheduler) getJobFrom(queue chan gitcollector.Job) (*Job, error) {
 		}
 
 		job.ID = id.String()
-		job.Logger = s.jobLogger
-
-		if job.Lib == nil {
-			job.Lib = s.lib
-		}
-
-		if job.TempFS == nil && len(job.Endpoints) > 0 {
-			job.TempFS = s.temp
-		}
 
 		return job, nil
-	case <-time.After(retrieveJobTimeout):
-		return nil, errNewJobsNotFound.New()
+	case <-time.After(timeout):
+		return nil, gitcollector.ErrNewJobsNotFound.New()
 	}
 }
