@@ -72,7 +72,6 @@ func NewUpdatesProvider(
 
 // Start implements the gitcollector.Provider interface.
 func (p *UpdatesProvider) Start() error {
-	// TODO: Add logging
 	if err := p.update(); err != nil {
 		return err
 	}
@@ -103,11 +102,10 @@ func (p *UpdatesProvider) update() error {
 		iter, err := p.lib.Locations()
 		if err != nil {
 			done <- err
-			// TODO: log errors
 			return
 		}
 
-		err = iter.ForEach(func(l borges.Location) error {
+		iter.ForEach(func(l borges.Location) error {
 			job := &library.Job{
 				LocationID: l.ID(),
 				ProcessFn:  Update,
@@ -120,10 +118,6 @@ func (p *UpdatesProvider) update() error {
 				return errEnqueueTimeout.New()
 			}
 		})
-
-		if err != nil {
-			// TODO: log errors
-		}
 	}()
 
 	select {

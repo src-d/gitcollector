@@ -13,6 +13,7 @@ import (
 	"github.com/src-d/go-borges"
 	"github.com/src-d/go-borges/siva"
 	"gopkg.in/src-d/go-billy.v4/osfs"
+	"gopkg.in/src-d/go-log.v1"
 
 	"github.com/stretchr/testify/require"
 )
@@ -104,12 +105,14 @@ func TestDownload(t *testing.T) {
 
 	var jobs []*library.Job
 	const ep = "git://%s.git"
+	logger := log.New(nil)
 	for _, test := range tests {
 		for _, id := range test.repoIDs {
 			job := &library.Job{
 				Lib:       lib,
 				Endpoints: []string{fmt.Sprintf(ep, id)},
 				TempFS:    temp,
+				Logger:    logger,
 			}
 
 			jobs = append(jobs, job)
