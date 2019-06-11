@@ -39,7 +39,7 @@ func (w *Worker) consumeJob() bool {
 		var done = make(chan struct{})
 		go func() {
 			defer close(done)
-			if err := job.Process(context.Background()); err != nil {
+			if err := job.Process(context.TODO()); err != nil {
 				// TODO: log errors
 			}
 		}()

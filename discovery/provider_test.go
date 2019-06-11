@@ -12,7 +12,7 @@ import (
 )
 
 func TestGHProvider(t *testing.T) {
-	var require = require.New(t)
+	var req = require.New(t)
 
 	const (
 		org        = "src-d"
@@ -27,22 +27,38 @@ func TestGHProvider(t *testing.T) {
 		&GHProviderOpts{TimeNewRepos: 2 * time.Second},
 	)
 
+	var (
+		consumedJobs = make(chan gitcollector.Job, 10)
+		stopErr      = make(chan error, 1)
+	)
+
 	go func() {
-		for {
+		stop := false
+		for !stop {
 			select {
 			case job := <-queue:
-				j, ok := job.(*library.Job)
-				require.True(ok)
-				require.Len(j.Endpoints, 3)
-				for _, ep := range j.Endpoints {
-					require.True(strings.Contains(ep, org))
+				select {
+				case consumedJobs <- job:
+				case <-time.After(timeToStop):
+					stop = true
 				}
 			case <-time.After(timeToStop):
-				require.NoError(provider.Stop())
-				return
+				stop = true
 			}
 		}
+
+		stopErr <- provider.Stop()
 	}()
 
-	require.True(gitcollector.ErrProviderStopped.Is(provider.Start()))
+	req.True(gitcollector.ErrProviderStopped.Is(provider.Start()))
+	req.NoError(<-stopErr)
+	close(consumedJobs)
+	for job := range consumedJobs {
+		j, ok := job.(*library.Job)
+		req.True(ok)
+		req.Len(j.Endpoints, 3)
+		for _, ep := range j.Endpoints {
+			req.True(strings.Contains(ep, org))
+		}
+	}
 }

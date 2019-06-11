@@ -17,7 +17,7 @@ func TestJobAndJobScheduler(t *testing.T) {
 	download := make(chan *Job, 20)
 	update := make(chan *Job, 20)
 	wp := workerpool.New(
-		NewJobScheduler(download, update, nil),
+		NewJobScheduler(download, update, nil, nil),
 	)
 
 	var (

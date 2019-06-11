@@ -11,6 +11,7 @@ import (
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/google/go-github/github"
+	"github.com/jpillora/backoff"
 	"golang.org/x/oauth2"
 )
 
@@ -31,20 +32,28 @@ type GHProviderOpts struct {
 	ResultsPerPage int
 	TimeNewRepos   time.Duration
 	StopTimeout    time.Duration
+	EnqueueTimeout time.Duration
+	MaxJobBuffer   int
 }
 
 // GHProvider is a gitcollector.Provider implementation. It will retrieve the
 // information for all the repositories for the given github organization
 // to produce gitcollector.Jobs.
 type GHProvider struct {
-	iter   *orgReposIter
-	queue  chan<- gitcollector.Job
-	cancel chan struct{}
+	iter     *orgReposIter
+	queue    chan<- gitcollector.Job
+	cancel   chan struct{}
+	bacakoff *backoff.Backoff
+	opts     *GHProviderOpts
 }
 
 var _ gitcollector.Provider = (*GHProvider)(nil)
 
-const stopTimeout = 500 * time.Microsecond
+const (
+	stopTimeout    = 5 * time.Second
+	enqueueTimeout = 5 * time.Second
+	maxJobBuffer   = 100
+)
 
 // NewGHProvider builds a new Provider
 func NewGHProvider(
@@ -60,46 +69,96 @@ func NewGHProvider(
 		opts.StopTimeout = stopTimeout
 	}
 
+	if opts.EnqueueTimeout <= 0 {
+		opts.EnqueueTimeout = enqueueTimeout
+	}
+
+	if opts.MaxJobBuffer <= 0 {
+		opts.MaxJobBuffer = maxJobBuffer
+	}
+
 	return &GHProvider{
-		iter:   newOrgReposIter(org, token, opts),
-		queue:  queue,
-		cancel: make(chan struct{}),
+		iter:     newOrgReposIter(org, token, opts),
+		queue:    queue,
+		cancel:   make(chan struct{}),
+		bacakoff: newBackoff(),
+		opts:     opts,
+	}
+}
+
+func newBackoff() *backoff.Backoff {
+	const (
+		minDuration = 100 * time.Millisecond
+		maxDuration = 30 * time.Second
+		factor      = 4
+	)
+
+	return &backoff.Backoff{
+		Min:    minDuration,
+		Max:    maxDuration,
+		Factor: factor,
+		Jitter: true,
 	}
 }
 
 // Start implements the gitcollector.Provider interface.
 func (p *GHProvider) Start() error {
 	// TODO: Add logging
+	var retryJobs []*library.Job
 	for {
 		select {
 		case <-p.cancel:
 			return gitcollector.ErrProviderStopped.New()
 		default:
-			repo, retry, err := p.iter.Next()
-			if err != nil {
-				if retry <= 0 {
-					return err
+			var (
+				job     *library.Job
+				retried bool
+			)
+
+			if len(retryJobs) > 0 {
+				job = retryJobs[0]
+				retried = true
+			} else {
+				repo, retry, err := p.iter.Next()
+				if err != nil {
+					if retry <= 0 {
+						return err
+					}
+
+					select {
+					case <-time.After(retry):
+					case <-p.cancel:
+						return gitcollector.
+							ErrProviderStopped.New()
+					}
+
+					continue
 				}
 
-				select {
-				case <-time.After(retry):
-				case <-p.cancel:
-					return gitcollector.ErrProviderStopped.New()
+				endpoints, err := getEndpoints(repo)
+				if err != nil {
+					// TODO: log errors
+					continue
 				}
 
-				continue
+				job = &library.Job{
+					Endpoints: endpoints,
+					ProcessFn: downloader.Download,
+				}
 			}
 
-			endpoints, err := getEndpoints(repo)
-			if err != nil {
-				// TODO: log errors
-				continue
-			}
+			select {
+			case p.queue <- job:
+				if retried {
+					p.bacakoff.Reset()
+				}
+			case <-time.After(p.opts.EnqueueTimeout):
+				if !retried &&
+					len(retryJobs) < p.opts.MaxJobBuffer {
+					retryJobs = append(retryJobs, job)
+				}
 
-			p.queue <- &library.Job{
-				Endpoints: endpoints,
-				IsFork:    repo.GetFork(),
-				ProcessFn: downloader.Download,
+				time.Sleep(p.bacakoff.Duration())
 			}
 		}
 	}
@@ -132,7 +191,7 @@ func (p *GHProvider) Stop() error {
 	select {
 	case p.cancel <- struct{}{}:
 		return nil
-	case <-time.After(stopTimeout):
+	case <-time.After(p.opts.StopTimeout):
 		return gitcollector.ErrProviderStop.New()
 	}
 }

@@ -2,11 +2,11 @@ package library
 
 import (
 	"context"
-	"math/rand"
 	"time"
 
 	"github.com/src-d/gitcollector"
 	"github.com/src-d/go-borges"
+	"gopkg.in/src-d/go-billy.v4"
 	"gopkg.in/src-d/go-errors.v1"
 )
 
@@ -21,7 +21,7 @@ var (
 type Job struct {
 	Lib        borges.Library
 	Endpoints  []string
-	IsFork     bool
+	TempFS     billy.Filesystem
 	LocationID borges.LocationID
 	ProcessFn  JobFn
 }
@@ -43,6 +43,7 @@ func (j *Job) Process(ctx context.Context) error {
 // JobScheduler is a gitcollector.JobScheduler implementation to schedule Jobs.
 type JobScheduler struct {
 	lib      borges.Library
+	temp     billy.Filesystem
 	download chan *Job
 	update   chan *Job
 	jobs     chan gitcollector.Job
@@ -66,9 +67,11 @@ var (
 func NewJobScheduler(
 	download, update chan *Job,
 	lib borges.Library,
+	temp billy.Filesystem,
 ) *JobScheduler {
 	return &JobScheduler{
 		lib:      lib,
+		temp:     temp,
 		download: download,
 		update:   update,
 		jobs:     make(chan gitcollector.Job, schedCapacity),
@@ -110,7 +113,11 @@ func (s *JobScheduler) Schedule() {
 				}
 			}
 
-			s.jobs <- job
+			select {
+			case s.jobs <- job:
+			case <-s.cancel:
+				return
+			}
 		}
 	}
 }
@@ -120,16 +127,11 @@ func (s *JobScheduler) schedule() (gitcollector.Job, error) {
 		return nil, errNewJobsNotFound.New()
 	}
 
-	var queue chan *Job
 	if len(s.download) > 0 {
-		queue = s.download
+		return s.getJobFrom(s.download)
 	}
 
-	if len(s.download) == 0 || (len(s.update) > 0 && rand.Intn(10) == 0) {
-		queue = s.update
-	}
-
-	return s.getJobFrom(queue)
+	return s.getJobFrom(s.update)
 }
 
 func (s *JobScheduler) getJobFrom(queue chan *Job) (*Job, error) {
@@ -141,6 +143,10 @@ func (s *JobScheduler) getJobFrom(queue chan *Job) (*Job, error) {
 
 		if job.Lib == nil {
 			job.Lib = s.lib
+		}
+
+		if job.TempFS == nil && len(job.Endpoints) > 0 {
+			job.TempFS = s.temp
 		}
 
 		return job, nil
