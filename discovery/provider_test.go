@@ -19,21 +19,24 @@ func TestGHProvider(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	queue := make(chan gitcollector.Job, 10)
+	queue := make(chan gitcollector.Job, 200)
 	provider := NewGHProvider(
 		org,
 		"", //token
 		queue,
-		&GHProviderOpts{TimeNewRepos: 2 * time.Second},
+		&GHProviderOpts{
+			TimeNewRepos:   1 * time.Second,
+			ResultsPerPage: 70,
+		},
 	)
 
 	var (
-		consumedJobs = make(chan gitcollector.Job, 10)
+		consumedJobs = make(chan gitcollector.Job, 200)
 		stopErr      = make(chan error, 1)
 	)
 
 	go func() {
-		stop := false
+		var stop bool
 		for !stop {
 			select {
 			case job := <-queue:
@@ -50,7 +53,12 @@ func TestGHProvider(t *testing.T) {
 		stopErr <- provider.Stop()
 	}()
 
-	req.True(gitcollector.ErrProviderStopped.Is(provider.Start()))
+	err := provider.Start()
+	req.True(
+		ErrNewRepositoriesNotFound.Is(err) ||
+			gitcollector.ErrProviderStopped.Is(err),
+	)
+
 	req.NoError(<-stopErr)
 	close(consumedJobs)
 	for job := range consumedJobs {

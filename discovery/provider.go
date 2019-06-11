@@ -30,6 +30,7 @@ var (
 type GHProviderOpts struct {
 	HTTPTimeout    time.Duration
 	ResultsPerPage int
+	WaitNewRepos   bool
 	TimeNewRepos   time.Duration
 	StopTimeout    time.Duration
 	EnqueueTimeout time.Duration
@@ -40,17 +41,18 @@ type GHProviderOpts struct {
 // information for all the repositories for the given github organization
 // to produce gitcollector.Jobs.
 type GHProvider struct {
-	iter     *orgReposIter
-	queue    chan<- gitcollector.Job
-	cancel   chan struct{}
-	bacakoff *backoff.Backoff
-	opts     *GHProviderOpts
+	iter    *orgReposIter
+	queue   chan<- gitcollector.Job
+	cancel  chan struct{}
+	stopped chan struct{}
+	backoff *backoff.Backoff
+	opts    *GHProviderOpts
 }
 
 var _ gitcollector.Provider = (*GHProvider)(nil)
 
 const (
-	stopTimeout    = 5 * time.Second
+	stopTimeout    = 10 * time.Second
 	enqueueTimeout = 5 * time.Second
 	maxJobBuffer   = 100
 )
@@ -78,18 +80,19 @@ func NewGHProvider(
 	}
 
 	return &GHProvider{
-		iter:     newOrgReposIter(org, token, opts),
-		queue:    queue,
-		cancel:   make(chan struct{}),
-		bacakoff: newBackoff(),
-		opts:     opts,
+		iter:    newOrgReposIter(org, token, opts),
+		queue:   queue,
+		cancel:  make(chan struct{}),
+		stopped: make(chan struct{}, 1),
+		backoff: newBackoff(),
+		opts:    opts,
 	}
 }
 
 func newBackoff() *backoff.Backoff {
 	const (
-		minDuration = 100 * time.Millisecond
-		maxDuration = 30 * time.Second
+		minDuration = 500 * time.Millisecond
+		maxDuration = 5 * time.Second
 		factor      = 4
 	)
 
@@ -103,6 +106,7 @@ func newBackoff() *backoff.Backoff {
 
 // Start implements the gitcollector.Provider interface.
 func (p *GHProvider) Start() error {
+	defer func() { p.stopped <- struct{}{} }()
 	// TODO: Add logging
 	var retryJobs []*library.Job
 	for {
@@ -121,6 +125,11 @@ func (p *GHProvider) Start() error {
 			} else {
 				repo, retry, err := p.iter.Next()
 				if err != nil {
+					if ErrNewRepositoriesNotFound.Is(err) &&
+						!p.opts.WaitNewRepos {
+						return err
+					}
+
 					if retry <= 0 {
 						return err
 					}
@@ -150,7 +159,7 @@ func (p *GHProvider) Start() error {
 			select {
 			case p.queue <- job:
 				if retried {
-					p.bacakoff.Reset()
+					p.backoff.Reset()
 				}
 			case <-time.After(p.opts.EnqueueTimeout):
 				if !retried &&
@@ -158,7 +167,12 @@ func (p *GHProvider) Start() error {
 					retryJobs = append(retryJobs, job)
 				}
 
-				time.Sleep(p.bacakoff.Duration())
+				select {
+				case <-time.After(p.backoff.Duration()):
+				case <-p.cancel:
+					return gitcollector.
+						ErrProviderStopped.New()
+				}
 			}
 		}
 	}
@@ -189,6 +203,8 @@ func getEndpoints(r *github.Repository) ([]string, error) {
 // Stop implements the gitcollector.Provider interface
 func (p *GHProvider) Stop() error {
 	select {
+	case <-p.stopped:
+		return nil
 	case p.cancel <- struct{}{}:
 		return nil
 	case <-time.After(p.opts.StopTimeout):
@@ -218,7 +234,7 @@ func newOrgReposIter(org, token string, conf *GHProviderOpts) *orgReposIter {
 	}
 
 	rpp := conf.ResultsPerPage
-	if rpp <= 0 {
+	if rpp <= 0 || rpp > 100 {
 		rpp = resultsPerPage
 	}
 
@@ -267,8 +283,6 @@ func (p *orgReposIter) Next() (*github.Repository, time.Duration, error) {
 }
 
 func (p *orgReposIter) requestRepos() (time.Duration, error) {
-	var bufRepos []*github.Repository
-
 	repos, res, err := p.client.Repositories.ListByOrg(
 		context.Background(),
 		p.org,
@@ -283,29 +297,34 @@ func (p *orgReposIter) requestRepos() (time.Duration, error) {
 		return timeToRetry(res), err
 	}
 
-	if len(repos) == 0 {
-		return p.waitNewRepos, ErrNewRepositoriesNotFound.New()
+	bufRepos := repos
+	if p.checkpoint > 0 {
+		i := p.checkpoint
+		if len(repos) < p.checkpoint {
+			// return err?
+			i = 0
+		}
+
+		bufRepos = repos[i:]
 	}
 
-	repos = repos[p.checkpoint:]
-	for _, r := range repos {
-		bufRepos = append(bufRepos, r)
+	if len(repos) < p.opts.PerPage {
+		p.checkpoint = len(repos)
 	}
 
-	if len(bufRepos) < resultsPerPage {
-		p.checkpoint = len(bufRepos)
-	} else {
-		p.checkpoint = 0
-	}
-
+	err = nil
 	if res.NextPage == 0 {
-		p.opts.Page++
+		if len(repos) == p.opts.PerPage {
+			p.opts.Page++
+		}
+
+		err = ErrNewRepositoriesNotFound.New()
 	} else {
 		p.opts.Page = res.NextPage
 	}
 
 	p.repos = bufRepos
-	return -1, nil
+	return p.waitNewRepos, err
 }
 
 func timeToRetry(res *github.Response) time.Duration {
