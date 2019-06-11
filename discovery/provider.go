@@ -107,7 +107,7 @@ func newBackoff() *backoff.Backoff {
 // Start implements the gitcollector.Provider interface.
 func (p *GHProvider) Start() error {
 	defer func() { p.stopped <- struct{}{} }()
-	// TODO: Add logging
+
 	var retryJobs []*library.Job
 	for {
 		select {
@@ -146,7 +146,6 @@ func (p *GHProvider) Start() error {
 
 				endpoints, err := getEndpoints(repo)
 				if err != nil {
-					// TODO: log errors
 					continue
 				}
 

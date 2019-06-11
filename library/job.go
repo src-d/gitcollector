@@ -8,6 +8,9 @@ import (
 	"github.com/src-d/go-borges"
 	"gopkg.in/src-d/go-billy.v4"
 	"gopkg.in/src-d/go-errors.v1"
+	"gopkg.in/src-d/go-log.v1"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -19,11 +22,13 @@ var (
 
 // Job represents a gitcollector.Job to perform a task on a borges.Library.
 type Job struct {
+	ID         string
 	Lib        borges.Library
 	Endpoints  []string
 	TempFS     billy.Filesystem
 	LocationID borges.LocationID
 	ProcessFn  JobFn
+	Logger     log.Logger
 }
 
 var _ gitcollector.Job = (*Job)(nil)
@@ -42,12 +47,13 @@ func (j *Job) Process(ctx context.Context) error {
 
 // JobScheduler is a gitcollector.JobScheduler implementation to schedule Jobs.
 type JobScheduler struct {
-	lib      borges.Library
-	temp     billy.Filesystem
-	download chan *Job
-	update   chan *Job
-	jobs     chan gitcollector.Job
-	cancel   chan struct{}
+	lib       borges.Library
+	temp      billy.Filesystem
+	download  chan gitcollector.Job
+	update    chan gitcollector.Job
+	jobs      chan gitcollector.Job
+	cancel    chan struct{}
+	jobLogger log.Logger
 }
 
 var _ gitcollector.JobScheduler = (*JobScheduler)(nil)
@@ -61,21 +67,25 @@ const (
 var (
 	errNewJobsNotFound = errors.NewKind("couldn't find new jobs to schedule")
 	errClosedChannel   = errors.NewKind("channel is closed")
+	errWrongJob        = errors.NewKind("wrong job found")
+	errNotJobID        = errors.NewKind("couldn't assign an ID to a job")
 )
 
 // NewJobScheduler builds a new JobScheduler.
 func NewJobScheduler(
-	download, update chan *Job,
+	download, update chan gitcollector.Job,
 	lib borges.Library,
 	temp billy.Filesystem,
+	joblogger log.Logger,
 ) *JobScheduler {
 	return &JobScheduler{
-		lib:      lib,
-		temp:     temp,
-		download: download,
-		update:   update,
-		jobs:     make(chan gitcollector.Job, schedCapacity),
-		cancel:   make(chan struct{}),
+		lib:       lib,
+		temp:      temp,
+		download:  download,
+		update:    update,
+		jobs:      make(chan gitcollector.Job, schedCapacity),
+		cancel:    make(chan struct{}),
+		jobLogger: joblogger,
 	}
 }
 
@@ -103,14 +113,10 @@ func (s *JobScheduler) Schedule() {
 					case <-s.cancel:
 						return
 					case <-time.After(waitNewJobs):
-						continue
 					}
 				}
 
-				if errClosedChannel.Is(err) {
-					// TODO: log errors
-
-				}
+				continue
 			}
 
 			select {
@@ -134,12 +140,25 @@ func (s *JobScheduler) schedule() (gitcollector.Job, error) {
 	return s.getJobFrom(s.update)
 }
 
-func (s *JobScheduler) getJobFrom(queue chan *Job) (*Job, error) {
+func (s *JobScheduler) getJobFrom(queue chan gitcollector.Job) (*Job, error) {
 	select {
-	case job, ok := <-queue:
+	case j, ok := <-queue:
 		if !ok {
 			return nil, errClosedChannel.New()
 		}
+
+		job, ok := j.(*Job)
+		if !ok {
+			return nil, errWrongJob.New()
+		}
+
+		id, err := uuid.NewRandom()
+		if err != nil {
+			return nil, errNotJobID.Wrap(err)
+		}
+
+		job.ID = id.String()
+		job.Logger = s.jobLogger
 
 		if job.Lib == nil {
 			job.Lib = s.lib
