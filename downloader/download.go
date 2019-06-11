@@ -126,32 +126,17 @@ func DownloadRepository(
 		r     borges.Repository
 	)
 
-	loc, err := lib.Location(locID)
-	if err != nil && !borges.ErrLocationNotExists.Is(err) {
-		return err
-	}
-
-	if borges.ErrLocationNotExists.Is(err) {
-		loc, err = lib.AddLocation(locID)
-		if err == nil {
-			start = time.Now()
-			r, err = createRootedRepo(
-				loc,
-				repoID,
-				tmp,
-				clonePath,
-			)
-
-			elapsed = time.Since(start).String()
-			logger.Debugf("copied")
-		}
-	}
-
+	loc, err := lib.AddLocation(locID)
 	if err != nil {
-		return err
-	}
+		if !siva.ErrLocationExists.Is(err) {
+			return err
+		}
 
-	if r == nil {
+		loc, err = lib.Location(locID)
+		if err != nil {
+			return err
+		}
+
 		r, err = loc.Get(repoID, borges.RWMode)
 		if err != nil {
 			r, err = loc.Init(repoID)
@@ -161,7 +146,28 @@ func DownloadRepository(
 		}
 	}
 
+	if r == nil {
+		start = time.Now()
+		r, err = createRootedRepo(
+			loc,
+			repoID,
+			tmp,
+			clonePath,
+		)
+
+		if err != nil {
+			return err
+		}
+
+		elapsed = time.Since(start).String()
+		logger.Debugf("copied")
+	}
+
 	if _, err := createRemote(r.R(), id, endpoint); err != nil {
+		if err := r.Close(); err != nil {
+			logger.Warningf("couldn't close repository")
+		}
+
 		return err
 	}
 
@@ -169,6 +175,10 @@ func DownloadRepository(
 	if err := r.R().Fetch(&git.FetchOptions{
 		RemoteName: id,
 	}); err != nil && err != git.NoErrAlreadyUpToDate {
+		if err := r.Close(); err != nil {
+			logger.Warningf("couldn't close repository")
+		}
+
 		return err
 	}
 
