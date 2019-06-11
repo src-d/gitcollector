@@ -27,6 +27,7 @@ type Job struct {
 	Endpoints  []string
 	TempFS     billy.Filesystem
 	LocationID borges.LocationID
+	Update     bool
 	ProcessFn  JobFn
 	Logger     log.Logger
 }
@@ -50,12 +51,45 @@ var (
 	errNotJobID = errors.NewKind("couldn't assign an ID to a job")
 )
 
+// NewDownloadJobScheduleFn builds a new gitcollector.ScheduleFn that only
+// schedules download jobs.
+func NewDownloadJobScheduleFn(
+	lib borges.Library,
+	download chan gitcollector.Job,
+	updateOnDownload bool,
+	jobLogger log.Logger,
+	temp billy.Filesystem,
+) gitcollector.ScheduleFn {
+	return func(
+		opts *gitcollector.JobSchedulerOpts,
+	) (gitcollector.Job, error) {
+		// TODO: implement
+		return nil, nil
+	}
+}
+
+// NewUpdateJobScheduleFn builds a new gitcollector.SchedulerFn that only
+// schedules update jobs.
+func NewUpdateJobScheduleFn(
+	lib borges.Library,
+	update chan gitcollector.Job,
+	jobLogger log.Logger,
+) gitcollector.ScheduleFn {
+	return func(
+		opts *gitcollector.JobSchedulerOpts,
+	) (gitcollector.Job, error) {
+		// TODO: implement
+		return nil, nil
+	}
+}
+
 // NewJobScheduleFn builds a new gitcollector.ScheduleFn that schedules download
 // and update jobs in different queues.
 func NewJobScheduleFn(
 	lib borges.Library,
 	download,
 	update chan gitcollector.Job,
+	updateOnDownload bool,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
 ) gitcollector.ScheduleFn {
@@ -86,8 +120,9 @@ func NewJobScheduleFn(
 		}
 
 		// download job
-		if job.TempFS == nil && len(job.Endpoints) > 0 {
+		if len(job.Endpoints) > 0 {
 			job.TempFS = temp
+			job.Update = updateOnDownload
 		}
 
 		job.Logger = jobLogger

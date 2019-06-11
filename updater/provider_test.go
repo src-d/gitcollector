@@ -51,6 +51,7 @@ func TestUpdatesProvider(t *testing.T) {
 		j, ok := job.(*library.Job)
 		require.True(ok)
 		require.Contains(ids, j.LocationID)
+		require.True(j.Update)
 	}
 }
 

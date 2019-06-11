@@ -6,10 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/src-d/gitcollector/library"
+	"github.com/src-d/gitcollector/updater"
+
 	"github.com/src-d/go-borges"
 	"github.com/src-d/go-borges/siva"
 	"gopkg.in/src-d/go-billy.v4"
@@ -26,14 +27,11 @@ var (
 	// ErrRepoAlreadyExists is returned if there is an attempt to
 	// retrieve an already downloaded git repository.
 	ErrRepoAlreadyExists = errors.NewKind("%s already downloaded")
-
-	// ErrNeedSivaLibrary is returned when a siva borges.Library is needed.
-	ErrNeedSivaLibrary = errors.NewKind("a siva library is needed")
 )
 
 // Download is a library.JobFn function to download a git repository and store
 // it in a borges.Library.
-func Download(_ context.Context, job *library.Job) error {
+func Download(ctx context.Context, job *library.Job) error {
 	logger := job.Logger.New(log.Fields{"job": "download", "id": job.ID})
 	if len(job.Endpoints) == 0 || job.Lib == nil || job.TempFS == nil {
 		err := ErrNotDownloadJob.New()
@@ -43,18 +41,43 @@ func Download(_ context.Context, job *library.Job) error {
 
 	lib, ok := (job.Lib).(*siva.Library)
 	if !ok {
-		err := ErrNeedSivaLibrary.New()
+		err := library.ErrNotSivaLibrary.New()
+		logger.Errorf(err, "wrong library")
 		return err
 	}
 
-	logger = logger.New(log.Fields{"url": job.Endpoints[0]})
+	endpoint := job.Endpoints[0]
+	logger = logger.New(log.Fields{"url": endpoint})
+
+	repoID, err := library.NewRepositoryID(endpoint)
+	if err != nil {
+		logger.Errorf(err, "wrong repository endpoint %s", endpoint)
+		return err
+	}
+
+	ok, _, _, err = lib.Has(repoID)
+	if err != nil {
+		logger.Errorf(err, "failed")
+		return err
+	}
+
+	if ok {
+		if job.Update {
+			return updater.Update(ctx, job)
+		}
+
+		logger.Errorf(err, "failed")
+		return ErrRepoAlreadyExists.New(repoID)
+	}
+
 	logger.Infof("started")
 	start := time.Now()
-	if err := DownloadRepository(
+	if err := downloadRepository(
 		logger,
 		lib,
 		job.TempFS,
-		job.Endpoints[0],
+		repoID,
+		endpoint,
 	); err != nil {
 		logger.Errorf(err, "failed")
 		return err
@@ -65,41 +88,26 @@ func Download(_ context.Context, job *library.Job) error {
 	return nil
 }
 
-// DownloadRepository downloads a repository into the given borges.Library.
-func DownloadRepository(
+func downloadRepository(
 	logger log.Logger,
 	lib *siva.Library,
 	tmp billy.Filesystem,
+	id borges.RepositoryID,
 	endpoint string,
 ) error {
-	var (
-		id     = buildRepoID(endpoint)
-		repoID = borges.RepositoryID(id)
-	)
-
-	ok, _, _, err := lib.Has(repoID)
-	if err != nil {
-		return err
-	}
-
-	if ok {
-		return ErrRepoAlreadyExists.New(id)
-	}
-
 	clonePath := filepath.Join(
 		cloneRootPath,
 		fmt.Sprintf("%s_%d", id, time.Now().UnixNano()),
 	)
 
 	start := time.Now()
-	repo, err := cloneRepo(tmp, clonePath, endpoint, id)
+	repo, err := cloneRepo(tmp, clonePath, endpoint, string(id))
 	if err != nil {
 		return err
 	}
 
 	elapsed := time.Since(start).String()
-	logger = logger.New(log.Fields{"elapsed": elapsed})
-	logger.Debugf("cloned")
+	logger.With(log.Fields{"elapsed": elapsed}).Debugf("cloned")
 
 	defer func() {
 		if err := util.RemoveAll(tmp, clonePath); err != nil {
@@ -107,7 +115,7 @@ func DownloadRepository(
 		}
 	}()
 
-	commit, err := headCommit(repo, id)
+	commit, err := headCommit(repo, string(id))
 	if err != nil {
 		return err
 	}
@@ -119,7 +127,7 @@ func DownloadRepository(
 	}
 
 	elapsed = time.Since(start).String()
-	logger.Debugf("root commit found")
+	logger.With(log.Fields{"elapsed": elapsed}).Debugf("root commit found")
 
 	var (
 		locID = borges.LocationID(root.Hash.String())
@@ -137,9 +145,9 @@ func DownloadRepository(
 			return err
 		}
 
-		r, err = loc.Get(repoID, borges.RWMode)
+		r, err = loc.Get(id, borges.RWMode)
 		if err != nil {
-			r, err = loc.Init(repoID)
+			r, err = loc.Init(id)
 			if err != nil {
 				return err
 			}
@@ -148,13 +156,7 @@ func DownloadRepository(
 
 	if r == nil {
 		start = time.Now()
-		r, err = createRootedRepo(
-			loc,
-			repoID,
-			tmp,
-			clonePath,
-		)
-
+		r, err = createRootedRepo(loc, id, tmp, clonePath)
 		if err != nil {
 			return err
 		}
@@ -163,7 +165,7 @@ func DownloadRepository(
 		logger.Debugf("copied")
 	}
 
-	if _, err := createRemote(r.R(), id, endpoint); err != nil {
+	if _, err := createRemote(r.R(), string(id), endpoint); err != nil {
 		if err := r.Close(); err != nil {
 			logger.Warningf("couldn't close repository")
 		}
@@ -173,7 +175,7 @@ func DownloadRepository(
 
 	start = time.Now()
 	if err := r.R().Fetch(&git.FetchOptions{
-		RemoteName: id,
+		RemoteName: string(id),
 	}); err != nil && err != git.NoErrAlreadyUpToDate {
 		if err := r.Close(); err != nil {
 			logger.Warningf("couldn't close repository")
@@ -183,7 +185,7 @@ func DownloadRepository(
 	}
 
 	elapsed = time.Since(start).String()
-	logger.Debugf("fetched")
+	logger.With(log.Fields{"elapsed": elapsed}).Debugf("fetched")
 
 	start = time.Now()
 	if err := r.Commit(); err != nil {
@@ -191,17 +193,8 @@ func DownloadRepository(
 	}
 
 	elapsed = time.Since(start).String()
-	logger.Debugf("commited")
+	logger.With(log.Fields{"elapsed": elapsed}).Debugf("commited")
 	return nil
-}
-
-func buildRepoID(endpoint string) string {
-	endpoint = strings.TrimSuffix(endpoint, ".git")
-	endpoint = strings.TrimPrefix(endpoint, "git://")
-	endpoint = strings.TrimPrefix(endpoint, "git@")
-	endpoint = strings.TrimPrefix(endpoint, "https://")
-	endpoint = strings.Replace(endpoint, ":", "/", 1)
-	return endpoint
 }
 
 func createRootedRepo(
@@ -298,27 +291,4 @@ func copyFile(
 	}
 
 	return nil
-}
-
-func addRemote(
-	loc borges.Location,
-	id, endpoint string,
-) (borges.Repository, error) {
-	repo, err := loc.Get(borges.RepositoryID(id), borges.RWMode)
-	if err == nil {
-		return repo, nil
-	}
-
-	repo, err = loc.Init(borges.RepositoryID(id))
-	if err != nil {
-		return nil, err
-	}
-
-	r := repo.R()
-	_, err = createRemote(r, id, endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	return repo, nil
 }

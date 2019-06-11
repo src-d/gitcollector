@@ -21,6 +21,7 @@ func TestJobAndJobScheduler(t *testing.T) {
 		NewJobScheduleFn(
 			nil,
 			download, update,
+			false,
 			log.New(nil),
 			nil,
 		),
