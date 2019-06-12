@@ -20,9 +20,10 @@ var _ JobScheduler = (*jobScheduler)(nil)
 
 // JobSchedulerOpts are configuration options for a JobScheduler.
 type JobSchedulerOpts struct {
-	Capacity      int
-	NewJobTimeout time.Duration
-	JobTimeout    time.Duration
+	Capacity       int
+	NotWaitNewJobs bool
+	NewJobTimeout  time.Duration
+	JobTimeout     time.Duration
 }
 
 const (
@@ -82,6 +83,10 @@ func (s *jobScheduler) Schedule() {
 			job, err := s.schedule(s.opts)
 			if err != nil {
 				if ErrNewJobsNotFound.Is(err) {
+					if s.opts.NotWaitNewJobs {
+						continue
+					}
+
 					select {
 					case <-s.cancel:
 						return

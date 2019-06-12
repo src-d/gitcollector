@@ -15,7 +15,7 @@ func TestJobAndJobScheduler(t *testing.T) {
 	var require = require.New(t)
 	require.True(true)
 
-	download := make(chan gitcollector.Job, 20)
+	download := make(chan gitcollector.Job, 2)
 	update := make(chan gitcollector.Job, 20)
 	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
 		NewJobScheduleFn(
@@ -25,7 +25,9 @@ func TestJobAndJobScheduler(t *testing.T) {
 			log.New(nil),
 			nil,
 		),
-		&gitcollector.JobSchedulerOpts{},
+		&gitcollector.JobSchedulerOpts{
+			NotWaitNewJobs: true,
+		},
 	))
 
 	var (
@@ -34,14 +36,10 @@ func TestJobAndJobScheduler(t *testing.T) {
 		}
 
 		mu        sync.Mutex
-		wg        sync.WaitGroup
 		got       []string
 		processFn = func(_ context.Context, j *Job) error {
 			mu.Lock()
-			defer func() {
-				wg.Done()
-				mu.Unlock()
-			}()
+			defer mu.Unlock()
 
 			got = append(got, j.Endpoints[0])
 			return nil
@@ -51,7 +49,6 @@ func TestJobAndJobScheduler(t *testing.T) {
 	wp.SetWorkers(10)
 	wp.Run()
 
-	wg.Add(len(endpoints))
 	for _, e := range endpoints {
 		download <- &Job{
 			Endpoints: []string{e},
@@ -59,7 +56,8 @@ func TestJobAndJobScheduler(t *testing.T) {
 		}
 	}
 
-	wg.Wait()
-	wp.Close()
+	close(download)
+	close(update)
+	wp.Wait()
 	require.ElementsMatch(endpoints, got)
 }

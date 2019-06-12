@@ -93,26 +93,46 @@ func NewJobScheduleFn(
 	jobLogger log.Logger,
 	temp billy.Filesystem,
 ) gitcollector.ScheduleFn {
+	var (
+		downloadClosed bool
+		updateClosed   bool
+	)
+
 	return func(
 		opts *gitcollector.JobSchedulerOpts,
 	) (gitcollector.Job, error) {
-		if len(download) == 0 && len(update) == 0 {
-			return nil, gitcollector.ErrNewJobsNotFound.New()
-		}
-
 		var (
 			job *Job
 			err error
 		)
 
-		if len(download) > 0 {
-			job, err = jobFrom(download, opts.JobTimeout)
-		} else {
-			job, err = jobFrom(update, opts.JobTimeout)
-		}
-
+		job, err = jobFrom(download, opts.JobTimeout)
 		if err != nil {
-			// check errors
+			if !(gitcollector.ErrClosedChannel.Is(err) ||
+				gitcollector.ErrNewJobsNotFound.Is(err)) {
+				return nil, err
+			}
+
+			if gitcollector.ErrClosedChannel.Is(err) {
+				downloadClosed = true
+			}
+
+			if updateClosed {
+				return nil, err
+			}
+
+			job, err = jobFrom(update, opts.JobTimeout)
+			if gitcollector.ErrClosedChannel.Is(err) {
+				updateClosed = true
+			}
+
+			if downloadClosed && updateClosed {
+				return nil, gitcollector.ErrClosedChannel.New()
+			}
+
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if job.Lib == nil {
