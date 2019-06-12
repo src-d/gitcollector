@@ -63,8 +63,16 @@ func NewDownloadJobScheduleFn(
 	return func(
 		opts *gitcollector.JobSchedulerOpts,
 	) (gitcollector.Job, error) {
-		// TODO: implement
-		return nil, nil
+		job, err := jobFrom(download, opts.JobTimeout)
+		if err != nil {
+			return nil, err
+		}
+
+		job.Lib = lib
+		job.TempFS = temp
+		job.Update = updateOnDownload
+		job.Logger = jobLogger
+		return job, nil
 	}
 }
 
@@ -78,8 +86,14 @@ func NewUpdateJobScheduleFn(
 	return func(
 		opts *gitcollector.JobSchedulerOpts,
 	) (gitcollector.Job, error) {
-		// TODO: implement
-		return nil, nil
+		job, err := jobFrom(update, opts.JobTimeout)
+		if err != nil {
+			return nil, err
+		}
+
+		job.Lib = lib
+		job.Logger = jobLogger
+		return job, nil
 	}
 }
 
@@ -168,7 +182,6 @@ func jobFrom(queue chan gitcollector.Job, timeout time.Duration) (*Job, error) {
 		}
 
 		job.ID = id.String()
-
 		return job, nil
 	case <-time.After(timeout):
 		return nil, gitcollector.ErrNewJobsNotFound.New()

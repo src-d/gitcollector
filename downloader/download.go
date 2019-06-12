@@ -55,7 +55,7 @@ func Download(ctx context.Context, job *library.Job) error {
 		return err
 	}
 
-	ok, _, _, err = lib.Has(repoID)
+	ok, _, locID, err := lib.Has(repoID)
 	if err != nil {
 		logger.Errorf(err, "failed")
 		return err
@@ -63,6 +63,7 @@ func Download(ctx context.Context, job *library.Job) error {
 
 	if ok {
 		if job.Update {
+			job.LocationID = locID
 			return updater.Update(ctx, job)
 		}
 
