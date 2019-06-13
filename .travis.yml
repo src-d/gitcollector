@@ -24,6 +24,9 @@ jobs:
         skip_cleanup: true
         on:
           tags: true
+      
+      after_deploy:
+        - make docker-push-latest-release
 
     - os: osx
       osx_image: xcode10.2
