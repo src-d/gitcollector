@@ -12,55 +12,6 @@ import (
 )
 
 func TestJobScheduleFn(t *testing.T) {
-	download := make(chan gitcollector.Job, 2)
-	update := make(chan gitcollector.Job, 20)
-	sched := NewJobScheduleFn(
-		nil,
-		download, update,
-		false,
-		log.New(nil),
-		nil,
-	)
-
-	queues := []chan gitcollector.Job{download, update}
-	testScheduleFn(t, sched, queues)
-}
-
-func TestDownloadJobScheduleFn(t *testing.T) {
-	download := make(chan gitcollector.Job, 5)
-	sched := NewDownloadJobScheduleFn(
-		nil,
-		download,
-		false,
-		log.New(nil),
-		nil,
-	)
-
-	queues := []chan gitcollector.Job{download}
-	testScheduleFn(t, sched, queues)
-}
-
-func TestUpdateJobScheduleFn(t *testing.T) {
-	update := make(chan gitcollector.Job, 5)
-	sched := NewUpdateJobScheduleFn(nil, update, log.New(nil))
-	queues := []chan gitcollector.Job{update}
-	testScheduleFn(t, sched, queues)
-}
-
-func testScheduleFn(
-	t *testing.T,
-	sched gitcollector.ScheduleFn,
-	queues []chan gitcollector.Job,
-) {
-	var req = require.New(t)
-
-	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
-		sched,
-		&gitcollector.JobSchedulerOpts{
-			NotWaitNewJobs: true,
-		},
-	))
-
 	var (
 		endpoints = []string{
 			"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
@@ -77,6 +28,94 @@ func testScheduleFn(
 		}
 	)
 
+	download := make(chan gitcollector.Job, 2)
+	update := make(chan gitcollector.Job, 20)
+	sched := NewJobScheduleFn(
+		nil,
+		download, update,
+		processFn, processFn,
+		false,
+		nil,
+		log.New(nil),
+		nil,
+	)
+
+	queues := []chan gitcollector.Job{download, update}
+	expected := testScheduleFn(sched, endpoints, queues)
+	require.ElementsMatch(t, expected, got)
+}
+
+func TestDownloadJobScheduleFn(t *testing.T) {
+	var (
+		endpoints = []string{
+			"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+		}
+
+		mu        sync.Mutex
+		got       []string
+		processFn = func(_ context.Context, j *Job) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			got = append(got, j.Endpoints[0])
+			return nil
+		}
+	)
+
+	download := make(chan gitcollector.Job, 5)
+	sched := NewDownloadJobScheduleFn(
+		nil,
+		download,
+		processFn,
+		false,
+		nil,
+		log.New(nil),
+		nil,
+	)
+
+	queues := []chan gitcollector.Job{download}
+	expected := testScheduleFn(sched, endpoints, queues)
+	require.ElementsMatch(t, expected, got)
+}
+
+func TestUpdateJobScheduleFn(t *testing.T) {
+	var (
+		endpoints = []string{
+			"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+		}
+
+		mu        sync.Mutex
+		got       []string
+		processFn = func(_ context.Context, j *Job) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			got = append(got, j.Endpoints[0])
+			return nil
+		}
+	)
+
+	update := make(chan gitcollector.Job, 5)
+	sched := NewUpdateJobScheduleFn(
+		nil, update, processFn, nil, log.New(nil),
+	)
+	queues := []chan gitcollector.Job{update}
+	expected := testScheduleFn(sched, endpoints, queues)
+	require.ElementsMatch(t, expected, got)
+}
+
+func testScheduleFn(
+	sched gitcollector.ScheduleFn,
+	endpoints []string,
+	queues []chan gitcollector.Job,
+) []string {
+	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
+		sched,
+		&gitcollector.JobSchedulerOpts{
+			NotWaitNewJobs: true,
+		},
+	))
+
 	wp.SetWorkers(10)
 	wp.Run()
 
@@ -84,7 +123,6 @@ func testScheduleFn(
 		for _, queue := range queues {
 			queue <- &Job{
 				Endpoints: []string{e},
-				ProcessFn: processFn,
 			}
 		}
 	}
@@ -96,5 +134,5 @@ func testScheduleFn(
 	}
 
 	wp.Wait()
-	req.ElementsMatch(expected, got)
+	return expected
 }

@@ -48,6 +48,7 @@ func TestUpdate(t *testing.T) {
 		Endpoints:  []string{},
 		Lib:        lib1,
 		LocationID: locID,
+		AuthToken:  func(string) string { return "" },
 		Logger:     log.New(nil),
 		Update:     true,
 	}

@@ -12,6 +12,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/cache"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 	"gopkg.in/src-d/go-git.v4/storage/filesystem"
 )
 
@@ -30,7 +31,7 @@ const (
 
 func cloneRepo(
 	fs billy.Filesystem,
-	path, endpoint, id string,
+	path, endpoint, id, token string,
 ) (*git.Repository, error) {
 	repoFS, err := fs.Chroot(path)
 	if err != nil {
@@ -50,13 +51,22 @@ func cloneRepo(
 		return nil, err
 	}
 
-	if err = remote.FetchContext(context.TODO(), &git.FetchOptions{
+	opts := &git.FetchOptions{
 		RefSpecs: []config.RefSpec{
 			config.RefSpec(fmt.Sprintf(fetchHEADStr, id)),
 		},
 		Force: true,
 		Tags:  git.NoTags,
-	}); err != nil {
+	}
+
+	if token != "" {
+		opts.Auth = &http.BasicAuth{
+			Username: "gitcollector",
+			Password: token,
+		}
+	}
+
+	if err = remote.FetchContext(context.TODO(), opts); err != nil {
 		util.RemoveAll(fs, path)
 		return nil, err
 	}

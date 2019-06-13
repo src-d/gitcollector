@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/src-d/gitcollector"
@@ -28,6 +29,7 @@ type Job struct {
 	TempFS     billy.Filesystem
 	LocationID borges.LocationID
 	Update     bool
+	AuthToken  AuthTokenFn
 	ProcessFn  JobFn
 	Logger     log.Logger
 }
@@ -46,6 +48,25 @@ func (j *Job) Process(ctx context.Context) error {
 	return j.ProcessFn(ctx, j)
 }
 
+// AuthTokenFn retrieve and authentication token if any for the given endpoint.
+type AuthTokenFn func(endpoint string) string
+
+func getAuthTokenByOrg(tokens map[string]string) AuthTokenFn {
+	if tokens == nil {
+		tokens = map[string]string{}
+	}
+
+	return func(endpoint string) string {
+		id, _ := NewRepositoryID(endpoint)
+		org := getOrg(id)
+		return tokens[org]
+	}
+}
+
+func getOrg(id borges.RepositoryID) string {
+	return strings.Split(id.String(), "/")[1]
+}
+
 var (
 	errWrongJob = errors.NewKind("wrong job found")
 	errNotJobID = errors.NewKind("couldn't assign an ID to a job")
@@ -56,7 +77,9 @@ var (
 func NewDownloadJobScheduleFn(
 	lib borges.Library,
 	download chan gitcollector.Job,
+	downloadFn JobFn,
 	updateOnDownload bool,
+	authTokens map[string]string,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
 ) gitcollector.ScheduleFn {
@@ -70,7 +93,9 @@ func NewDownloadJobScheduleFn(
 
 		job.Lib = lib
 		job.TempFS = temp
+		job.ProcessFn = downloadFn
 		job.Update = updateOnDownload
+		job.AuthToken = getAuthTokenByOrg(authTokens)
 		job.Logger = jobLogger
 		return job, nil
 	}
@@ -81,6 +106,8 @@ func NewDownloadJobScheduleFn(
 func NewUpdateJobScheduleFn(
 	lib borges.Library,
 	update chan gitcollector.Job,
+	updateFn JobFn,
+	authTokens map[string]string,
 	jobLogger log.Logger,
 ) gitcollector.ScheduleFn {
 	return func(
@@ -92,6 +119,8 @@ func NewUpdateJobScheduleFn(
 		}
 
 		job.Lib = lib
+		job.ProcessFn = updateFn
+		job.AuthToken = getAuthTokenByOrg(authTokens)
 		job.Logger = jobLogger
 		return job, nil
 	}
@@ -101,9 +130,10 @@ func NewUpdateJobScheduleFn(
 // and update jobs in different queues.
 func NewJobScheduleFn(
 	lib borges.Library,
-	download,
-	update chan gitcollector.Job,
+	download, update chan gitcollector.Job,
+	downloadFn, updateFn JobFn,
 	updateOnDownload bool,
+	authTokens map[string]string,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
 ) gitcollector.ScheduleFn {
@@ -153,12 +183,17 @@ func NewJobScheduleFn(
 			job.Lib = lib
 		}
 
-		// download job
 		if len(job.Endpoints) > 0 {
+			// download job
 			job.TempFS = temp
 			job.Update = updateOnDownload
+			job.ProcessFn = downloadFn
+		} else {
+			// update job
+			job.ProcessFn = updateFn
 		}
 
+		job.AuthToken = getAuthTokenByOrg(authTokens)
 		job.Logger = jobLogger
 		return job, nil
 	}

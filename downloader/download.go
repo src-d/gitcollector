@@ -17,6 +17,7 @@ import (
 	"gopkg.in/src-d/go-billy.v4/util"
 	"gopkg.in/src-d/go-errors.v1"
 	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 	"gopkg.in/src-d/go-log.v1"
 )
 
@@ -79,6 +80,7 @@ func Download(ctx context.Context, job *library.Job) error {
 		job.TempFS,
 		repoID,
 		endpoint,
+		job.AuthToken,
 	); err != nil {
 		logger.Errorf(err, "failed")
 		return err
@@ -95,14 +97,17 @@ func downloadRepository(
 	tmp billy.Filesystem,
 	id borges.RepositoryID,
 	endpoint string,
+	authToken library.AuthTokenFn,
 ) error {
 	clonePath := filepath.Join(
 		cloneRootPath,
 		fmt.Sprintf("%s_%d", id, time.Now().UnixNano()),
 	)
 
+	token := authToken(endpoint)
+
 	start := time.Now()
-	repo, err := cloneRepo(tmp, clonePath, endpoint, string(id))
+	repo, err := cloneRepo(tmp, clonePath, endpoint, string(id), token)
 	if err != nil {
 		return err
 	}
@@ -174,10 +179,21 @@ func downloadRepository(
 		return err
 	}
 
-	start = time.Now()
-	if err := r.R().Fetch(&git.FetchOptions{
+	opts := &git.FetchOptions{
 		RemoteName: string(id),
-	}); err != nil && err != git.NoErrAlreadyUpToDate {
+	}
+
+	if token != "" {
+		opts.Auth = &http.BasicAuth{
+			Username: "gitcollector",
+			Password: token,
+		}
+	}
+
+	start = time.Now()
+	if err := r.R().Fetch(
+		opts,
+	); err != nil && err != git.NoErrAlreadyUpToDate {
 		if err := r.Close(); err != nil {
 			logger.Warningf("couldn't close repository")
 		}
