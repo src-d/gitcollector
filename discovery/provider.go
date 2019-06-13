@@ -180,9 +180,9 @@ func (p *GHProvider) Start() error {
 func getEndpoints(r *github.Repository) ([]string, error) {
 	var endpoints []string
 	getURLs := []func() string{
+		r.GetHTMLURL,
 		r.GetGitURL,
 		r.GetSSHURL,
-		r.GetHTMLURL,
 	}
 
 	for _, getURL := range getURLs {
