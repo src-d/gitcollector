@@ -109,7 +109,6 @@ func (p *UpdatesProvider) update() error {
 			job := &library.Job{
 				LocationID: l.ID(),
 				Update:     true,
-				ProcessFn:  Update,
 			}
 
 			select {

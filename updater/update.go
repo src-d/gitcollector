@@ -9,6 +9,7 @@ import (
 	"github.com/src-d/go-borges/siva"
 	"gopkg.in/src-d/go-errors.v1"
 	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 	"gopkg.in/src-d/go-log.v1"
 )
 
@@ -62,7 +63,12 @@ func Update(_ context.Context, job *library.Job) error {
 
 	logger.Infof("started")
 	start := time.Now()
-	if err := updateRepository(logger, loc, remote); err != nil {
+	if err := updateRepository(
+		logger,
+		loc,
+		remote,
+		job.AuthToken,
+	); err != nil {
 		logger.Errorf(err, "failed")
 		return err
 	}
@@ -76,6 +82,7 @@ func updateRepository(
 	logger log.Logger,
 	loc *siva.Location,
 	remote string,
+	authToken library.AuthTokenFn,
 ) error {
 	repo, err := loc.Get("", borges.RWMode)
 	if err != nil {
@@ -100,7 +107,19 @@ func updateRepository(
 	var alreadyUpdated int
 	start := time.Now()
 	for _, remote := range remotes {
-		err := remote.Fetch(&git.FetchOptions{})
+		opts := &git.FetchOptions{}
+		urls := remote.Config().URLs
+		if len(urls) > 0 {
+			token := authToken(urls[0])
+			if token != "" {
+				opts.Auth = &http.BasicAuth{
+					Username: "gitcollector",
+					Password: token,
+				}
+			}
+		}
+
+		err := remote.Fetch(opts)
 		if err != nil && err != git.NoErrAlreadyUpToDate {
 			if err := repo.Close(); err != nil {
 				logger.Warningf("couldn't close repository")

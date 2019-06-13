@@ -22,11 +22,11 @@ func TestGHProvider(t *testing.T) {
 	queue := make(chan gitcollector.Job, 200)
 	provider := NewGHProvider(
 		org,
-		"", //token
 		queue,
 		&GHProviderOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 70,
+			AuthToken:      "",
 		},
 	)
 

@@ -112,6 +112,7 @@ func TestDownload(t *testing.T) {
 				Lib:       lib,
 				Endpoints: []string{fmt.Sprintf(ep, id)},
 				TempFS:    temp,
+				AuthToken: func(string) string { return "" },
 				Logger:    logger,
 			}
 

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/src-d/gitcollector"
-	"github.com/src-d/gitcollector/downloader"
 	"github.com/src-d/gitcollector/library"
 	"gopkg.in/src-d/go-errors.v1"
 
@@ -35,6 +34,7 @@ type GHProviderOpts struct {
 	StopTimeout    time.Duration
 	EnqueueTimeout time.Duration
 	MaxJobBuffer   int
+	AuthToken      string
 }
 
 // GHProvider is a gitcollector.Provider implementation. It will retrieve the
@@ -59,7 +59,7 @@ const (
 
 // NewGHProvider builds a new Provider
 func NewGHProvider(
-	org, token string,
+	org string,
 	queue chan<- gitcollector.Job,
 	opts *GHProviderOpts,
 ) *GHProvider {
@@ -80,7 +80,7 @@ func NewGHProvider(
 	}
 
 	return &GHProvider{
-		iter:    newOrgReposIter(org, token, opts),
+		iter:    newOrgReposIter(org, opts),
 		queue:   queue,
 		cancel:  make(chan struct{}),
 		stopped: make(chan struct{}, 1),
@@ -151,7 +151,6 @@ func (p *GHProvider) Start() error {
 
 				job = &library.Job{
 					Endpoints: endpoints,
-					ProcessFn: downloader.Download,
 				}
 			}
 
@@ -226,7 +225,7 @@ type orgReposIter struct {
 	waitNewRepos time.Duration
 }
 
-func newOrgReposIter(org, token string, conf *GHProviderOpts) *orgReposIter {
+func newOrgReposIter(org string, conf *GHProviderOpts) *orgReposIter {
 	to := conf.HTTPTimeout
 	if to <= 0 {
 		to = httpTimeout
@@ -244,7 +243,7 @@ func newOrgReposIter(org, token string, conf *GHProviderOpts) *orgReposIter {
 
 	return &orgReposIter{
 		org:    org,
-		client: newGithubClient(token, to),
+		client: newGithubClient(conf.AuthToken, to),
 		opts: &github.RepositoryListByOrgOptions{
 			ListOptions: github.ListOptions{PerPage: rpp},
 		},
