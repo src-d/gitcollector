@@ -121,6 +121,7 @@ func (p *GHProvider) Start() error {
 
 			if len(retryJobs) > 0 {
 				job = retryJobs[0]
+				retryJobs = retryJobs[1:]
 				retried = true
 			} else {
 				repo, retry, err := p.iter.Next()
@@ -271,7 +272,8 @@ func newGithubClient(token string, timeout time.Duration) *github.Client {
 
 func (p *orgReposIter) Next() (*github.Repository, time.Duration, error) {
 	if len(p.repos) == 0 {
-		if retry, err := p.requestRepos(); err != nil {
+		retry, err := p.requestRepos()
+		if err != nil && len(p.repos) == 0 {
 			return nil, retry, err
 		}
 	}

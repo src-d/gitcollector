@@ -52,9 +52,12 @@ func Update(_ context.Context, job *library.Job) error {
 	var remote string
 	if len(job.Endpoints) > 0 {
 		ep := job.Endpoints[0]
+
+		logger = logger.New(log.Fields{"url": ep})
+
 		id, err := library.NewRepositoryID(ep)
 		if err != nil {
-			logger.Errorf(err, "wrong repository endpoint %s", ep)
+			logger.Errorf(err, "wrong repository endpoint")
 			return err
 		}
 

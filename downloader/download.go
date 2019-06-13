@@ -108,7 +108,7 @@ func downloadRepository(
 	token := authToken(endpoint)
 
 	start := time.Now()
-	repo, err := cloneRepo(tmp, clonePath, endpoint, string(id), token)
+	repo, err := cloneRepo(tmp, clonePath, endpoint, id.String(), token)
 	if err != nil {
 		return err
 	}
@@ -122,10 +122,14 @@ func downloadRepository(
 		}
 	}()
 
-	commit, err := headCommit(repo, string(id))
+	commit, err := headCommit(repo, id.String())
 	if err != nil {
 		return err
 	}
+
+	logger.With(log.Fields{
+		"head": commit.Hash.String(),
+	}).Debugf("head commit found")
 
 	start = time.Now()
 	root, err := rootCommit(repo, commit)
@@ -134,7 +138,10 @@ func downloadRepository(
 	}
 
 	elapsed = time.Since(start).String()
-	logger.With(log.Fields{"elapsed": elapsed}).Debugf("root commit found")
+	logger.With(log.Fields{
+		"elapsed": elapsed,
+		"root":    root.Hash.String(),
+	}).Debugf("root commit found")
 
 	var (
 		locID = borges.LocationID(root.Hash.String())
@@ -172,7 +179,7 @@ func downloadRepository(
 		logger.With(log.Fields{"elapsed": elapsed}).Debugf("copied")
 	}
 
-	if _, err := createRemote(r.R(), string(id), endpoint); err != nil {
+	if _, err := createRemote(r.R(), id.String(), endpoint); err != nil {
 		if err := r.Close(); err != nil {
 			logger.Warningf("couldn't close repository")
 		}
@@ -181,7 +188,7 @@ func downloadRepository(
 	}
 
 	opts := &git.FetchOptions{
-		RemoteName: string(id),
+		RemoteName: id.String(),
 	}
 
 	if token != "" {
