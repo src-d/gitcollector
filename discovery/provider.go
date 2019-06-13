@@ -127,7 +127,8 @@ func (p *GHProvider) Start() error {
 				if err != nil {
 					if ErrNewRepositoriesNotFound.Is(err) &&
 						!p.opts.WaitNewRepos {
-						return err
+						return gitcollector.
+							ErrProviderStopped.New()
 					}
 
 					if retry <= 0 {

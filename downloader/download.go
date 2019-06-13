@@ -68,8 +68,9 @@ func Download(ctx context.Context, job *library.Job) error {
 			return updater.Update(ctx, job)
 		}
 
-		logger.Errorf(err, "failed")
-		return ErrRepoAlreadyExists.New(repoID)
+		err := ErrRepoAlreadyExists.New(repoID)
+		logger.Warningf(err.Error())
+		return err
 	}
 
 	logger.Infof("started")
@@ -168,7 +169,7 @@ func downloadRepository(
 		}
 
 		elapsed = time.Since(start).String()
-		logger.Debugf("copied")
+		logger.With(log.Fields{"elapsed": elapsed}).Debugf("copied")
 	}
 
 	if _, err := createRemote(r.R(), string(id), endpoint); err != nil {
