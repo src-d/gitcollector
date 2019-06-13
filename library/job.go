@@ -27,6 +27,7 @@ type Job struct {
 	Endpoints  []string
 	TempFS     billy.Filesystem
 	LocationID borges.LocationID
+	Update     bool
 	ProcessFn  JobFn
 	Logger     log.Logger
 }
@@ -50,35 +51,102 @@ var (
 	errNotJobID = errors.NewKind("couldn't assign an ID to a job")
 )
 
-// NewJobScheduleFn builds a new gitcollector.ScheduleFn that schedules download
-// and update jobs in different queues.
-func NewJobScheduleFn(
+// NewDownloadJobScheduleFn builds a new gitcollector.ScheduleFn that only
+// schedules download jobs.
+func NewDownloadJobScheduleFn(
 	lib borges.Library,
-	download,
-	update chan gitcollector.Job,
+	download chan gitcollector.Job,
+	updateOnDownload bool,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
 ) gitcollector.ScheduleFn {
 	return func(
 		opts *gitcollector.JobSchedulerOpts,
 	) (gitcollector.Job, error) {
-		if len(download) == 0 && len(update) == 0 {
-			return nil, gitcollector.ErrNewJobsNotFound.New()
+		job, err := jobFrom(download, opts.JobTimeout)
+		if err != nil {
+			return nil, err
 		}
 
+		job.Lib = lib
+		job.TempFS = temp
+		job.Update = updateOnDownload
+		job.Logger = jobLogger
+		return job, nil
+	}
+}
+
+// NewUpdateJobScheduleFn builds a new gitcollector.SchedulerFn that only
+// schedules update jobs.
+func NewUpdateJobScheduleFn(
+	lib borges.Library,
+	update chan gitcollector.Job,
+	jobLogger log.Logger,
+) gitcollector.ScheduleFn {
+	return func(
+		opts *gitcollector.JobSchedulerOpts,
+	) (gitcollector.Job, error) {
+		job, err := jobFrom(update, opts.JobTimeout)
+		if err != nil {
+			return nil, err
+		}
+
+		job.Lib = lib
+		job.Logger = jobLogger
+		return job, nil
+	}
+}
+
+// NewJobScheduleFn builds a new gitcollector.ScheduleFn that schedules download
+// and update jobs in different queues.
+func NewJobScheduleFn(
+	lib borges.Library,
+	download,
+	update chan gitcollector.Job,
+	updateOnDownload bool,
+	jobLogger log.Logger,
+	temp billy.Filesystem,
+) gitcollector.ScheduleFn {
+	var (
+		downloadClosed bool
+		updateClosed   bool
+	)
+
+	return func(
+		opts *gitcollector.JobSchedulerOpts,
+	) (gitcollector.Job, error) {
 		var (
 			job *Job
 			err error
 		)
 
-		if len(download) > 0 {
-			job, err = jobFrom(download, opts.JobTimeout)
-		} else {
-			job, err = jobFrom(update, opts.JobTimeout)
-		}
-
+		job, err = jobFrom(download, opts.JobTimeout)
 		if err != nil {
-			// check errors
+			if !(gitcollector.ErrClosedChannel.Is(err) ||
+				gitcollector.ErrNewJobsNotFound.Is(err)) {
+				return nil, err
+			}
+
+			if gitcollector.ErrClosedChannel.Is(err) {
+				downloadClosed = true
+			}
+
+			if updateClosed {
+				return nil, err
+			}
+
+			job, err = jobFrom(update, opts.JobTimeout)
+			if gitcollector.ErrClosedChannel.Is(err) {
+				updateClosed = true
+			}
+
+			if downloadClosed && updateClosed {
+				return nil, gitcollector.ErrClosedChannel.New()
+			}
+
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if job.Lib == nil {
@@ -86,8 +154,9 @@ func NewJobScheduleFn(
 		}
 
 		// download job
-		if job.TempFS == nil && len(job.Endpoints) > 0 {
+		if len(job.Endpoints) > 0 {
 			job.TempFS = temp
+			job.Update = updateOnDownload
 		}
 
 		job.Logger = jobLogger
@@ -113,7 +182,6 @@ func jobFrom(queue chan gitcollector.Job, timeout time.Duration) (*Job, error) {
 		}
 
 		job.ID = id.String()
-
 		return job, nil
 	case <-time.After(timeout):
 		return nil, gitcollector.ErrNewJobsNotFound.New()

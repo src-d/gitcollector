@@ -11,20 +11,54 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestJobAndJobScheduler(t *testing.T) {
-	var require = require.New(t)
-	require.True(true)
-
-	download := make(chan gitcollector.Job, 20)
+func TestJobScheduleFn(t *testing.T) {
+	download := make(chan gitcollector.Job, 2)
 	update := make(chan gitcollector.Job, 20)
+	sched := NewJobScheduleFn(
+		nil,
+		download, update,
+		false,
+		log.New(nil),
+		nil,
+	)
+
+	queues := []chan gitcollector.Job{download, update}
+	testScheduleFn(t, sched, queues)
+}
+
+func TestDownloadJobScheduleFn(t *testing.T) {
+	download := make(chan gitcollector.Job, 5)
+	sched := NewDownloadJobScheduleFn(
+		nil,
+		download,
+		false,
+		log.New(nil),
+		nil,
+	)
+
+	queues := []chan gitcollector.Job{download}
+	testScheduleFn(t, sched, queues)
+}
+
+func TestUpdateJobScheduleFn(t *testing.T) {
+	update := make(chan gitcollector.Job, 5)
+	sched := NewUpdateJobScheduleFn(nil, update, log.New(nil))
+	queues := []chan gitcollector.Job{update}
+	testScheduleFn(t, sched, queues)
+}
+
+func testScheduleFn(
+	t *testing.T,
+	sched gitcollector.ScheduleFn,
+	queues []chan gitcollector.Job,
+) {
+	var req = require.New(t)
+
 	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
-		NewJobScheduleFn(
-			nil,
-			download, update,
-			log.New(nil),
-			nil,
-		),
-		&gitcollector.JobSchedulerOpts{},
+		sched,
+		&gitcollector.JobSchedulerOpts{
+			NotWaitNewJobs: true,
+		},
 	))
 
 	var (
@@ -33,14 +67,10 @@ func TestJobAndJobScheduler(t *testing.T) {
 		}
 
 		mu        sync.Mutex
-		wg        sync.WaitGroup
 		got       []string
 		processFn = func(_ context.Context, j *Job) error {
 			mu.Lock()
-			defer func() {
-				wg.Done()
-				mu.Unlock()
-			}()
+			defer mu.Unlock()
 
 			got = append(got, j.Endpoints[0])
 			return nil
@@ -50,15 +80,21 @@ func TestJobAndJobScheduler(t *testing.T) {
 	wp.SetWorkers(10)
 	wp.Run()
 
-	wg.Add(len(endpoints))
 	for _, e := range endpoints {
-		download <- &Job{
-			Endpoints: []string{e},
-			ProcessFn: processFn,
+		for _, queue := range queues {
+			queue <- &Job{
+				Endpoints: []string{e},
+				ProcessFn: processFn,
+			}
 		}
 	}
 
-	wg.Wait()
-	wp.Close()
-	require.ElementsMatch(endpoints, got)
+	var expected []string
+	for _, queue := range queues {
+		expected = append(expected, endpoints...)
+		close(queue)
+	}
+
+	wp.Wait()
+	req.ElementsMatch(expected, got)
 }

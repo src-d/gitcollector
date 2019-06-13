@@ -90,7 +90,11 @@ func (wp *WorkerPool) remove(n int) {
 // Wait waits for the workers to finish. A worker will finish when the queue to
 // retrieve jobs from is closed.
 func (wp *WorkerPool) Wait() {
+	<-wp.resize
+	defer func() { wp.resize <- struct{}{} }()
+
 	wp.wg.Wait()
+	wp.workers = nil
 }
 
 // Close stops all the workers in the pool waiting for the jobs to finish.
