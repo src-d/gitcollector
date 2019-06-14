@@ -75,22 +75,25 @@ func (c *DownloadCmd) Execute(args []string) error {
 
 	updateOnDownload := !c.NotAllowUpdates
 	log.Debugf("allow updates on downloads: %v", updateOnDownload)
+
 	download := make(chan gitcollector.Job, 100)
-	wp := gitcollector.NewWorkerPool(
-		gitcollector.NewJobScheduler(
-			library.NewDownloadJobScheduleFn(
-				lib,
-				download,
-				downloader.Download,
-				updateOnDownload,
-				authTokens,
-				log.New(nil),
-				temp,
-			),
-			&gitcollector.JobSchedulerOpts{},
-		),
+
+	jobScheduleFn := library.NewDownloadJobScheduleFn(
+		lib,
+		download,
+		downloader.Download,
+		updateOnDownload,
+		authTokens,
+		log.New(nil),
+		temp,
 	)
 
+	jobScheduler := gitcollector.NewJobScheduler(
+		jobScheduleFn,
+		&gitcollector.JobSchedulerOpts{},
+	)
+
+	wp := gitcollector.NewWorkerPool(jobScheduler, nil)
 	wp.SetWorkers(workers)
 	log.Debugf("number of workers in the pool %d", workers)
 

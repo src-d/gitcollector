@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -13,12 +14,10 @@ func TestWorkerPool(t *testing.T) {
 	require.True(true)
 
 	queue := make(chan Job, 20)
-	sched := &testScheduler{
-		queue:  queue,
-		cancel: make(chan struct{}),
-	}
-
-	wp := NewWorkerPool(sched)
+	wp := NewWorkerPool(
+		NewJobScheduler(testScheduleFn(queue), &JobSchedulerOpts{}),
+		nil,
+	)
 
 	numWorkers := []int{2, 8, 0}
 	for _, n := range numWorkers {
@@ -54,11 +53,14 @@ func TestWorkerPool(t *testing.T) {
 	close(queue)
 
 	wp.Wait()
-	wp.Close()
 	require.ElementsMatch(ids, got)
 
 	queue = make(chan Job, 20)
-	sched.queue = queue
+	wp.scheduler = NewJobScheduler(
+		testScheduleFn(queue),
+		&JobSchedulerOpts{},
+	)
+
 	wp.SetWorkers(20)
 	wp.Run()
 
@@ -85,11 +87,17 @@ func (j *testJob) Process(_ context.Context) error {
 	return j.process(j.id)
 }
 
-type testScheduler struct {
-	queue  chan Job
-	cancel chan struct{}
-}
+func testScheduleFn(queue chan Job) ScheduleFn {
+	return func(*JobSchedulerOpts) (Job, error) {
+		select {
+		case job, ok := <-queue:
+			if !ok {
+				return nil, ErrClosedChannel.New()
+			}
 
-func (s *testScheduler) Jobs() chan Job { return s.queue }
-func (s *testScheduler) Schedule()      { s.cancel <- struct{}{} }
-func (s *testScheduler) Finish()        {}
+			return job, nil
+		case <-time.After(50 * time.Millisecond):
+			return nil, ErrNewJobsNotFound.New()
+		}
+	}
+}

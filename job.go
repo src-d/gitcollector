@@ -12,14 +12,18 @@ type Job interface {
 	Process(context.Context) error
 }
 
-// JobScheduler schedule the Jobs to be processed.
-type JobScheduler interface {
-	// Jobs returns a channel where the Jobs will be scheduled.
-	Jobs() chan Job
-	// Schedule start to schedule Jobs.
-	Schedule()
-	// Finish stop to schedule Jobs.
-	Finish()
+// MetricsCollector represents a component in charge to collect jobs metrics.
+type MetricsCollector interface {
+	// Start starts collecting metrics.
+	Start()
+	// Stop stops collectingMetrincs.
+	Stop()
+	// Success registers metrics about successfully processed Job.
+	Success(Job)
+	// Faile register metrics about a failed processed Job.
+	Fail(Job)
+	// Discover register metrics about a discovered Job.
+	Discover(Job)
 }
 
 var (
