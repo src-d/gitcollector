@@ -34,7 +34,10 @@ var (
 // it in a borges.Library.
 func Download(ctx context.Context, job *library.Job) error {
 	logger := job.Logger.New(log.Fields{"job": "download", "id": job.ID})
-	if len(job.Endpoints) == 0 || job.Lib == nil || job.TempFS == nil {
+	if job.Type != library.JobDownload ||
+		len(job.Endpoints) == 0 ||
+		job.Lib == nil ||
+		job.TempFS == nil {
 		err := ErrNotDownloadJob.New()
 		logger.Errorf(err, "wrong job")
 		return err
@@ -63,7 +66,8 @@ func Download(ctx context.Context, job *library.Job) error {
 	}
 
 	if ok {
-		if job.Update {
+		if job.AllowUpdate {
+			job.Type = library.JobUpdate
 			job.LocationID = locID
 			return updater.Update(ctx, job)
 		}

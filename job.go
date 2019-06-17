@@ -17,7 +17,7 @@ type MetricsCollector interface {
 	// Start starts collecting metrics.
 	Start()
 	// Stop stops collectingMetrincs.
-	Stop()
+	Stop(immediate bool)
 	// Success registers metrics about successfully processed Job.
 	Success(Job)
 	// Faile register metrics about a failed processed Job.

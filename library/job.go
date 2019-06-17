@@ -21,17 +21,28 @@ var (
 		"process function not found for library.Job")
 )
 
+// JobType represents the type of the Job.
+type JobType uint8
+
+const (
+	// JobDownload represents a Download Job.
+	JobDownload = 1 << iota
+	// JobUpdate represents an Update Job.
+	JobUpdate
+)
+
 // Job represents a gitcollector.Job to perform a task on a borges.Library.
 type Job struct {
-	ID         string
-	Lib        borges.Library
-	Endpoints  []string
-	TempFS     billy.Filesystem
-	LocationID borges.LocationID
-	Update     bool
-	AuthToken  AuthTokenFn
-	ProcessFn  JobFn
-	Logger     log.Logger
+	ID          string
+	Type        JobType
+	Lib         borges.Library
+	Endpoints   []string
+	TempFS      billy.Filesystem
+	LocationID  borges.LocationID
+	AllowUpdate bool
+	AuthToken   AuthTokenFn
+	ProcessFn   JobFn
+	Logger      log.Logger
 }
 
 var _ gitcollector.Job = (*Job)(nil)
@@ -94,7 +105,7 @@ func NewDownloadJobScheduleFn(
 		job.Lib = lib
 		job.TempFS = temp
 		job.ProcessFn = downloadFn
-		job.Update = updateOnDownload
+		job.AllowUpdate = updateOnDownload
 		job.AuthToken = getAuthTokenByOrg(authTokens)
 		job.Logger = jobLogger
 		return job, nil
@@ -183,14 +194,15 @@ func NewJobScheduleFn(
 			job.Lib = lib
 		}
 
-		if len(job.Endpoints) > 0 {
-			// download job
+		switch job.Type {
+		case JobDownload:
 			job.TempFS = temp
-			job.Update = updateOnDownload
+			job.AllowUpdate = updateOnDownload
 			job.ProcessFn = downloadFn
-		} else {
-			// update job
+		case JobUpdate:
 			job.ProcessFn = updateFn
+		default:
+			return nil, errWrongJob.New()
 		}
 
 		job.AuthToken = getAuthTokenByOrg(authTokens)

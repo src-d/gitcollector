@@ -146,13 +146,14 @@ func (p *GHProvider) Start() error {
 					continue
 				}
 
-				endpoints, err := getEndpoints(repo)
+				endpoint, err := getEndpoint(repo)
 				if err != nil {
 					continue
 				}
 
 				job = &library.Job{
-					Endpoints: endpoints,
+					Type:      library.JobDownload,
+					Endpoints: []string{endpoint},
 				}
 			}
 
@@ -178,8 +179,8 @@ func (p *GHProvider) Start() error {
 	}
 }
 
-func getEndpoints(r *github.Repository) ([]string, error) {
-	var endpoints []string
+func getEndpoint(r *github.Repository) (string, error) {
+	var endpoint string
 	getURLs := []func() string{
 		r.GetHTMLURL,
 		r.GetGitURL,
@@ -189,15 +190,16 @@ func getEndpoints(r *github.Repository) ([]string, error) {
 	for _, getURL := range getURLs {
 		ep := getURL()
 		if ep != "" {
-			endpoints = append(endpoints, ep)
+			endpoint = ep
+			break
 		}
 	}
 
-	if len(endpoints) < 1 {
-		return nil, ErrEndpointsNotFound.New(r.GetFullName())
+	if endpoint == "" {
+		return "", ErrEndpointsNotFound.New(r.GetFullName())
 	}
 
-	return endpoints, nil
+	return endpoint, nil
 }
 
 // Stop implements the gitcollector.Provider interface

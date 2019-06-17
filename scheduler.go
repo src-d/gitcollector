@@ -107,6 +107,7 @@ func (s *JobScheduler) Schedule() {
 
 			select {
 			case s.jobs <- job:
+				s.metrics.Discover(job)
 			case <-s.cancel:
 				return
 			}

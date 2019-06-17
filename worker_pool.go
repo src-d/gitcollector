@@ -106,7 +106,7 @@ func (wp *WorkerPool) Wait() {
 
 	wp.wg.Wait()
 	wp.workers = nil
-	wp.metrics.Stop()
+	wp.metrics.Stop(false)
 }
 
 // Close stops all the workers in the pool waiting for the jobs to finish.
@@ -114,7 +114,7 @@ func (wp *WorkerPool) Close() {
 	wp.SetWorkers(0)
 	wp.wg.Wait()
 	wp.scheduler.Finish()
-	wp.metrics.Stop()
+	wp.metrics.Stop(false)
 }
 
 // Stop stops all the workers in the pool immediately.
@@ -129,7 +129,7 @@ func (wp *WorkerPool) Stop() {
 	wp.wg.Wait()
 	wp.workers = nil
 	wp.scheduler.Finish()
-	wp.metrics.Stop()
+	wp.metrics.Stop(true)
 }
 
 type hollowMetricsCollector struct{}
@@ -137,7 +137,7 @@ type hollowMetricsCollector struct{}
 var _ MetricsCollector = (*hollowMetricsCollector)(nil)
 
 func (mc *hollowMetricsCollector) Start()       {}
-func (mc *hollowMetricsCollector) Stop()        {}
+func (mc *hollowMetricsCollector) Stop(bool)    {}
 func (mc *hollowMetricsCollector) Success(Job)  {}
 func (mc *hollowMetricsCollector) Fail(Job)     {}
 func (mc *hollowMetricsCollector) Discover(Job) {}

@@ -123,8 +123,14 @@ func testScheduleFn(
 	wp.Run()
 
 	for _, e := range endpoints {
-		for _, queue := range queues {
+		for i, queue := range queues {
+			var t JobType = JobDownload
+			if i != 0 {
+				t = JobUpdate
+			}
+
 			queue <- &Job{
+				Type:      t,
 				Endpoints: []string{e},
 			}
 		}

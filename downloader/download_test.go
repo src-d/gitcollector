@@ -110,6 +110,7 @@ func TestDownload(t *testing.T) {
 		for _, id := range test.repoIDs {
 			job := &library.Job{
 				Lib:       lib,
+				Type:      library.JobDownload,
 				Endpoints: []string{fmt.Sprintf(ep, id)},
 				TempFS:    temp,
 				AuthToken: func(string) string { return "" },

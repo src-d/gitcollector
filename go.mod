@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7
 	github.com/kami-zh/go-capturer v0.0.0-20171211120116-e492ea43421d // indirect
+	github.com/lib/pq v1.1.1
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect

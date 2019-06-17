@@ -10,6 +10,7 @@ import (
 	"github.com/src-d/gitcollector/discovery"
 	"github.com/src-d/gitcollector/downloader"
 	"github.com/src-d/gitcollector/library"
+	"github.com/src-d/gitcollector/metrics"
 	"github.com/src-d/go-borges/siva"
 	"gopkg.in/src-d/go-billy.v4/osfs"
 	"gopkg.in/src-d/go-cli.v0"
@@ -26,6 +27,8 @@ type DownloadCmd struct {
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
 	Org             string `long:"org" env:"GITHUB_ORGANIZATION" description:"github organization" required:"true"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
+	MetricsDBURI    string `long:"metrics-db" env:"GITCOLLECTOR_METRICS_DB_URI" description:"uri to a database where metrics will be sent"`
+	MetricsDBTable  string `long:"metrics-db-table" env:"GITCOLLECTOR_METRICS_DB_TABLE" default:"gitcollector_metrics" description:"table name where the metrics will be added"`
 }
 
 // Execute runs the command.
@@ -93,7 +96,20 @@ func (c *DownloadCmd) Execute(args []string) error {
 		&gitcollector.JobSchedulerOpts{},
 	)
 
-	wp := gitcollector.NewWorkerPool(jobScheduler, nil)
+	var mc *metrics.Collector
+	if c.MetricsDBURI != "" {
+		db, err := metrics.PrepareDB(
+			c.MetricsDBURI, c.MetricsDBTable, c.Org,
+		)
+		check(err, "metrics database")
+
+		mc = metrics.NewCollector(&metrics.CollectorOpts{
+			Log:  log.New(nil),
+			Send: metrics.SendToDB(db, c.MetricsDBTable, c.Org),
+		})
+	}
+
+	wp := gitcollector.NewWorkerPool(jobScheduler, mc)
 	wp.SetWorkers(workers)
 	log.Debugf("number of workers in the pool %d", workers)
 
