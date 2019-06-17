@@ -109,19 +109,28 @@ func testScheduleFn(
 	endpoints []string,
 	queues []chan gitcollector.Job,
 ) []string {
-	wp := gitcollector.NewWorkerPool(gitcollector.NewJobScheduler(
-		sched,
-		&gitcollector.JobSchedulerOpts{
-			NotWaitNewJobs: true,
-		},
-	))
+	wp := gitcollector.NewWorkerPool(
+		gitcollector.NewJobScheduler(
+			sched,
+			&gitcollector.JobSchedulerOpts{
+				NotWaitNewJobs: true,
+			},
+		),
+		nil,
+	)
 
 	wp.SetWorkers(10)
 	wp.Run()
 
 	for _, e := range endpoints {
-		for _, queue := range queues {
+		for i, queue := range queues {
+			var t JobType = JobDownload
+			if i != 0 {
+				t = JobUpdate
+			}
+
 			queue <- &Job{
+				Type:      t,
 				Endpoints: []string{e},
 			}
 		}

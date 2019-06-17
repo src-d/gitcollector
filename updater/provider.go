@@ -107,8 +107,8 @@ func (p *UpdatesProvider) update() error {
 
 		iter.ForEach(func(l borges.Location) error {
 			job := &library.Job{
+				Type:       library.JobUpdate,
 				LocationID: l.ID(),
-				Update:     true,
 			}
 
 			select {

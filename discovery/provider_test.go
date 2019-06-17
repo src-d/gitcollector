@@ -64,7 +64,7 @@ func TestGHProvider(t *testing.T) {
 	for job := range consumedJobs {
 		j, ok := job.(*library.Job)
 		req.True(ok)
-		req.Len(j.Endpoints, 3)
+		req.Len(j.Endpoints, 1)
 		for _, ep := range j.Endpoints {
 			req.True(strings.Contains(ep, org))
 		}

@@ -6,25 +6,36 @@ import (
 
 // WorkerPool holds a pool of workers.
 type WorkerPool struct {
-	scheduler JobScheduler
+	scheduler *JobScheduler
+	metrics   MetricsCollector
 	workers   []*Worker
 	resize    chan struct{}
 	wg        sync.WaitGroup
 }
 
 // NewWorkerPool builds a new WorkerPool.
-func NewWorkerPool(scheduler JobScheduler) *WorkerPool {
+func NewWorkerPool(
+	scheduler *JobScheduler,
+	metrics MetricsCollector,
+) *WorkerPool {
 	resize := make(chan struct{}, 1)
 	resize <- struct{}{}
+	if metrics == nil {
+		metrics = &hollowMetricsCollector{}
+	}
+
 	return &WorkerPool{
 		scheduler: scheduler,
+		metrics:   metrics,
 		resize:    resize,
 	}
 }
 
 // Run notify workers to start.
 func (wp *WorkerPool) Run() {
-	go func() { wp.scheduler.Schedule() }()
+	wp.scheduler.metrics = wp.metrics
+	go wp.metrics.Start()
+	go wp.scheduler.Schedule()
 }
 
 // Size returns the current number of workers in the pool.
@@ -57,7 +68,7 @@ func (wp *WorkerPool) SetWorkers(n int) {
 func (wp *WorkerPool) add(n int) {
 	wp.wg.Add(n)
 	for i := 0; i < n; i++ {
-		w := NewWorker(wp.scheduler.Jobs())
+		w := NewWorker(wp.scheduler.Jobs(), wp.metrics)
 		go func() {
 			w.Start()
 			wp.wg.Done()
@@ -95,6 +106,7 @@ func (wp *WorkerPool) Wait() {
 
 	wp.wg.Wait()
 	wp.workers = nil
+	wp.metrics.Stop(false)
 }
 
 // Close stops all the workers in the pool waiting for the jobs to finish.
@@ -102,6 +114,7 @@ func (wp *WorkerPool) Close() {
 	wp.SetWorkers(0)
 	wp.wg.Wait()
 	wp.scheduler.Finish()
+	wp.metrics.Stop(false)
 }
 
 // Stop stops all the workers in the pool immediately.
@@ -116,4 +129,15 @@ func (wp *WorkerPool) Stop() {
 	wp.wg.Wait()
 	wp.workers = nil
 	wp.scheduler.Finish()
+	wp.metrics.Stop(true)
 }
+
+type hollowMetricsCollector struct{}
+
+var _ MetricsCollector = (*hollowMetricsCollector)(nil)
+
+func (mc *hollowMetricsCollector) Start()       {}
+func (mc *hollowMetricsCollector) Stop(bool)    {}
+func (mc *hollowMetricsCollector) Success(Job)  {}
+func (mc *hollowMetricsCollector) Fail(Job)     {}
+func (mc *hollowMetricsCollector) Discover(Job) {}

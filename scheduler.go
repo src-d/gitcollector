@@ -9,15 +9,6 @@ import (
 // ScheduleFn is a function to schedule the next Job.
 type ScheduleFn func(*JobSchedulerOpts) (Job, error)
 
-type jobScheduler struct {
-	jobs     chan Job
-	schedule ScheduleFn
-	cancel   chan struct{}
-	opts     *JobSchedulerOpts
-}
-
-var _ JobScheduler = (*jobScheduler)(nil)
-
 // JobSchedulerOpts are configuration options for a JobScheduler.
 type JobSchedulerOpts struct {
 	Capacity       int
@@ -41,8 +32,20 @@ var (
 	ErrClosedChannel = errors.NewKind("channel is closed")
 )
 
+// JobScheduler schedules the Jobs to be processed.
+type JobScheduler struct {
+	jobs     chan Job
+	schedule ScheduleFn
+	cancel   chan struct{}
+	metrics  MetricsCollector
+	opts     *JobSchedulerOpts
+}
+
 // NewJobScheduler builds a new JobScheduler.
-func NewJobScheduler(schedule ScheduleFn, opts *JobSchedulerOpts) JobScheduler {
+func NewJobScheduler(
+	schedule ScheduleFn,
+	opts *JobSchedulerOpts,
+) *JobScheduler {
 	if opts.Capacity <= 0 {
 		opts.Capacity = schedCapacity
 	}
@@ -55,7 +58,7 @@ func NewJobScheduler(schedule ScheduleFn, opts *JobSchedulerOpts) JobScheduler {
 		opts.NewJobTimeout = newJobTimeout
 	}
 
-	return &jobScheduler{
+	return &JobScheduler{
 		jobs:     make(chan Job, opts.Capacity),
 		schedule: schedule,
 		cancel:   make(chan struct{}),
@@ -63,18 +66,18 @@ func NewJobScheduler(schedule ScheduleFn, opts *JobSchedulerOpts) JobScheduler {
 	}
 }
 
-// Jobs implements the JobScheduler interface.
-func (s *jobScheduler) Jobs() chan Job {
+// Jobs returns the channel where the JobScheduler will schedule the Jobs.
+func (s *JobScheduler) Jobs() chan Job {
 	return s.jobs
 }
 
-// Finish implements the JobScheduler interface.
-func (s *jobScheduler) Finish() {
+// Finish finishes to schedule Jobs.
+func (s *JobScheduler) Finish() {
 	s.cancel <- struct{}{}
 }
 
-// Schedule implements the JobScheduler interface.
-func (s *jobScheduler) Schedule() {
+// Schedule schedules Jobs.
+func (s *JobScheduler) Schedule() {
 	for {
 		select {
 		case <-s.cancel:
@@ -104,6 +107,7 @@ func (s *jobScheduler) Schedule() {
 
 			select {
 			case s.jobs <- job:
+				s.metrics.Discover(job)
 			case <-s.cancel:
 				return
 			}

@@ -45,12 +45,11 @@ func TestUpdate(t *testing.T) {
 
 	job := &library.Job{
 		ID:         "foo",
-		Endpoints:  []string{},
+		Type:       library.JobUpdate,
 		Lib:        lib1,
 		LocationID: locID,
 		AuthToken:  func(string) string { return "" },
 		Logger:     log.New(nil),
-		Update:     true,
 	}
 
 	// Update all remotes

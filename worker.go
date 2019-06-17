@@ -8,16 +8,18 @@ import (
 
 // Worker is in charge of process gitcollector.Jobs.
 type Worker struct {
-	id     string
-	jobs   chan Job
-	cancel chan bool
+	id      string
+	jobs    chan Job
+	cancel  chan bool
+	metrics MetricsCollector
 }
 
 // NewWorker builds a new Worker.
-func NewWorker(jobs chan Job) *Worker {
+func NewWorker(jobs chan Job, metrics MetricsCollector) *Worker {
 	return &Worker{
-		jobs:   jobs,
-		cancel: make(chan bool),
+		jobs:    jobs,
+		cancel:  make(chan bool),
+		metrics: metrics,
 	}
 }
 
@@ -56,8 +58,11 @@ func (w *Worker) consumeJob() (bool, error) {
 			if err := job.Process(
 				context.TODO(),
 			); err != nil {
-				// the job is in charge to log its own errors
+				w.metrics.Fail(job)
+				return
 			}
+
+			w.metrics.Success(job)
 		}()
 
 		select {
