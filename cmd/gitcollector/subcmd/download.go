@@ -96,7 +96,7 @@ func (c *DownloadCmd) Execute(args []string) error {
 		&gitcollector.JobSchedulerOpts{},
 	)
 
-	var mc *metrics.Collector
+	var mc gitcollector.MetricsCollector
 	if c.MetricsDBURI != "" {
 		db, err := metrics.PrepareDB(
 			c.MetricsDBURI, c.MetricsDBTable, c.Org,
