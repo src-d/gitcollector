@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/src-d/gitcollector"
 	"github.com/src-d/gitcollector/discovery"
@@ -23,12 +24,14 @@ type DownloadCmd struct {
 
 	LibPath         string `long:"library" description:"path where download to" env:"GITCOLLECTOR_LIBRARY" required:"true"`
 	LibBucket       int    `long:"bucket" description:"library bucketization level" env:"GITCOLLECTOR_LIBRARY_BUCKET" default:"2"`
+	TmpPath         string `long:"tmp" description:"directory to place generated temporal files" default:"/tmp" env:"GITCOLLECTOR_TMP"`
 	Workers         int    `long:"workers" description:"number of workers, default to GOMAXPROCS" env:"GITCOLLECTOR_WORKERS"`
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
 	Org             string `long:"org" env:"GITHUB_ORGANIZATION" description:"github organization" required:"true"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
 	MetricsDBURI    string `long:"metrics-db" env:"GITCOLLECTOR_METRICS_DB_URI" description:"uri to a database where metrics will be sent"`
 	MetricsDBTable  string `long:"metrics-db-table" env:"GITCOLLECTOR_METRICS_DB_TABLE" default:"gitcollector_metrics" description:"table name where the metrics will be added"`
+	MetricsSync     int64  `long:"metrics-sync-timeout" env:"GITCOLLECTOR_METRICS_SYNC" default:"30" description:"timeout in seconds to send metrics"`
 }
 
 // Execute runs the command.
@@ -45,23 +48,25 @@ func (c *DownloadCmd) Execute(args []string) error {
 
 	fs := osfs.New(c.LibPath)
 
-	downloaderTmpPath, err := ioutil.TempDir("", "gitcollector-downloader")
+	tmpPath, err := ioutil.TempDir(
+		c.TmpPath, "gitcollector-downloader")
 	check(err, "unable to create temporal directory")
 	defer func() {
-		if err := os.RemoveAll(downloaderTmpPath); err != nil {
+		if err := os.RemoveAll(tmpPath); err != nil {
 			log.Warningf(
 				"couldn't remove temporal directory %s: %s",
-				downloaderTmpPath, err.Error(),
+				tmpPath, err.Error(),
 			)
 		}
 	}()
 
-	log.Debugf("temporal dir: %s", downloaderTmpPath)
-	temp := osfs.New(downloaderTmpPath)
+	log.Debugf("temporal dir: %s", tmpPath)
+	temp := osfs.New(tmpPath)
 
 	lib, err := siva.NewLibrary("test", fs, siva.LibraryOptions{
 		Bucket:        2,
 		Transactional: true,
+		TempFS:        temp,
 	})
 	check(err, "unable to create borges siva library")
 
@@ -104,14 +109,18 @@ func (c *DownloadCmd) Execute(args []string) error {
 		check(err, "metrics database")
 
 		mc = metrics.NewCollector(&metrics.CollectorOpts{
-			Log:  log.New(nil),
-			Send: metrics.SendToDB(db, c.MetricsDBTable, c.Org),
+			Log:      log.New(nil),
+			Send:     metrics.SendToDB(db, c.MetricsDBTable, c.Org),
+			SyncTime: time.Duration(c.MetricsSync) * time.Second,
 		})
+
+		log.Debugf("metrics collection activated: sync timeout %d",
+			c.MetricsSync)
 	}
 
 	wp := gitcollector.NewWorkerPool(jobScheduler, mc)
 	wp.SetWorkers(workers)
-	log.Debugf("number of workers in the pool %d", workers)
+	log.Debugf("number of workers in the pool %d", wp.Size())
 
 	wp.Run()
 	log.Debugf("worker pool is running")

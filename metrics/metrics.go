@@ -101,6 +101,7 @@ func (mc *Collector) Start() {
 		batch    int
 		lastSent = time.Now()
 		job      *library.Job
+		waiting  bool
 	)
 
 	for !(mc.isClosed() || stop) {
@@ -135,25 +136,30 @@ func (mc *Collector) Start() {
 			mc.close()
 			continue
 		case <-time.After(waitTimeout):
-			mc.logger.Debugf("waiting new metrics")
-			continue
+			if !waiting {
+				mc.logger.Debugf("waiting new metrics")
+				waiting = true
+			}
 		}
 
-		var ok bool
-		job, ok = j.(*library.Job)
-		if !ok {
-			mc.logger.Warningf("wrong job found: %T", j)
-			continue
+		if j != nil {
+			var ok bool
+			job, ok = j.(*library.Job)
+			if !ok {
+				mc.logger.Warningf("wrong job found: %T", j)
+				continue
+			}
+
+			if err := mc.modifyMetrics(job, kind); err != nil {
+				log.Warningf(err.Error())
+				continue
+			}
+
+			batch++
+			waiting = false
 		}
 
-		if err := mc.modifyMetrics(job, kind); err != nil {
-			log.Warningf(err.Error())
-			continue
-		}
-
-		batch++
 		if mc.sendMetric(batch, lastSent) {
-			lastSent = time.Now()
 			if err := mc.opts.Send(
 				context.TODO(),
 				mc,
@@ -167,7 +173,10 @@ func (mc *Collector) Start() {
 				continue
 			}
 
+			mc.logMetrics(true)
+			lastSent = time.Now()
 			batch = 0
+			waiting = false
 		}
 	}
 
@@ -180,13 +189,23 @@ func (mc *Collector) Start() {
 		}
 	}
 
-	mc.logger.Infof(
-		"discover: %d, download: %d, update: %d, fail: %d",
-		mc.discoverCount,
-		mc.successDownloadCount,
-		mc.successUpdateCount,
-		mc.failCount,
-	)
+	mc.logMetrics(false)
+}
+
+func (mc *Collector) logMetrics(debug bool) {
+	logger := mc.logger.New(log.Fields{
+		"discover": mc.discoverCount,
+		"download": mc.successDownloadCount,
+		"update":   mc.successUpdateCount,
+		"fail":     mc.failCount,
+	})
+
+	msg := "metrics updated"
+	if debug {
+		logger.Debugf(msg)
+	} else {
+		logger.Infof(msg)
+	}
 }
 
 func (mc *Collector) isClosed() bool {
@@ -229,8 +248,17 @@ func (mc *Collector) modifyMetrics(job *library.Job, kind int) error {
 
 func (mc *Collector) sendMetric(batch int, lastSent time.Time) bool {
 	fullBatch := batch >= mc.opts.BatchSize
-	syncTimeout := time.Since(lastSent) >= mc.opts.SyncTime && batch > 0
-	return fullBatch || syncTimeout
+	syncTimeout := time.Since(lastSent) >= mc.opts.SyncTime
+	if syncTimeout {
+		msg := "sync timeout"
+		if batch == 0 {
+			msg += ": nothing to update"
+		}
+
+		mc.logger.Debugf(msg)
+	}
+
+	return fullBatch || (syncTimeout && batch > 0)
 }
 
 // Stop implements the gitcollector.MetricsCollector interface.
