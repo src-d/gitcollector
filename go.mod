@@ -15,7 +15,7 @@ require (
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/src-d/envconfig v1.0.0 // indirect
-	github.com/src-d/go-borges v0.0.0-20190617144653-b7a36f0d14b7
+	github.com/src-d/go-borges v0.0.0-20190618140907-612b19548010
 	github.com/stretchr/testify v1.3.0
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	golang.org/x/crypto v0.0.0-20190617133340-57b3e21c3d56 // indirect

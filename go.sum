@@ -83,8 +83,8 @@ github.com/src-d/envconfig v1.0.0 h1:/AJi6DtjFhZKNx3OB2qMsq7y4yT5//AeSZIe7rk+PX8
 github.com/src-d/envconfig v1.0.0/go.mod h1:Q9YQZ7BKITldTBnoxsE5gOeB5y66RyPXeue/R4aaNBc=
 github.com/src-d/gcfg v1.4.0 h1:xXbNR5AlLSA315x2UO+fTSSAXCDf+Ar38/6oyGbDKQ4=
 github.com/src-d/gcfg v1.4.0/go.mod h1:p/UMsR43ujA89BJY9duynAwIpvqEujIH/jFlfL7jWoI=
-github.com/src-d/go-borges v0.0.0-20190617144653-b7a36f0d14b7 h1:t0IdQ7/drX5Rn/OesxkNWYVNbuTQB2zqUefQzVGLD4Y=
-github.com/src-d/go-borges v0.0.0-20190617144653-b7a36f0d14b7/go.mod h1:Myl/zHrk3iT/I5T08RTBpuGzchucytSsi6p7KzM2lOA=
+github.com/src-d/go-borges v0.0.0-20190618140907-612b19548010 h1:2ry6H8r0rnMu5UItt7DFO+ZCmChWjOhdnDGtoRp3Xe4=
+github.com/src-d/go-borges v0.0.0-20190618140907-612b19548010/go.mod h1:Myl/zHrk3iT/I5T08RTBpuGzchucytSsi6p7KzM2lOA=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1w=
