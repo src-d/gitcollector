@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/src-d/gitcollector"
@@ -27,7 +29,7 @@ type DownloadCmd struct {
 	TmpPath         string `long:"tmp" description:"directory to place generated temporal files" default:"/tmp" env:"GITCOLLECTOR_TMP"`
 	Workers         int    `long:"workers" description:"number of workers, default to GOMAXPROCS" env:"GITCOLLECTOR_WORKERS"`
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
-	Org             string `long:"org" env:"GITHUB_ORGANIZATION" description:"github organization" required:"true"`
+	Orgs            string `long:"orgs" env:"GITHUB_ORGANIZATIONS" description:"list of github organization names separated by comma" required:"true"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
 	MetricsDBURI    string `long:"metrics-db" env:"GITCOLLECTOR_METRICS_DB_URI" description:"uri to a database where metrics will be sent"`
 	MetricsDBTable  string `long:"metrics-db-table" env:"GITCOLLECTOR_METRICS_DB_TABLE" default:"gitcollector_metrics" description:"table name where the metrics will be added"`
@@ -36,6 +38,10 @@ type DownloadCmd struct {
 
 // Execute runs the command.
 func (c *DownloadCmd) Execute(args []string) error {
+	start := time.Now()
+
+	orgs := strings.Split(c.Orgs, ",")
+
 	info, err := os.Stat(c.LibPath)
 	check(err, "wrong path to locate the library")
 
@@ -73,7 +79,9 @@ func (c *DownloadCmd) Execute(args []string) error {
 	authTokens := map[string]string{}
 	if c.Token != "" {
 		log.Debugf("acces token found")
-		authTokens[c.Org] = c.Token
+		for _, org := range orgs {
+			authTokens[org] = c.Token
+		}
 	}
 
 	workers := c.Workers
@@ -103,16 +111,12 @@ func (c *DownloadCmd) Execute(args []string) error {
 
 	var mc gitcollector.MetricsCollector
 	if c.MetricsDBURI != "" {
-		db, err := metrics.PrepareDB(
-			c.MetricsDBURI, c.MetricsDBTable, c.Org,
+		mc = setupMetrics(
+			c.MetricsDBURI,
+			c.MetricsDBTable,
+			orgs,
+			c.MetricsSync,
 		)
-		check(err, "metrics database")
-
-		mc = metrics.NewCollector(&metrics.CollectorOpts{
-			Log:      log.New(nil),
-			Send:     metrics.SendToDB(db, c.MetricsDBTable, c.Org),
-			SyncTime: time.Duration(c.MetricsSync) * time.Second,
-		})
 
 		log.Debugf("metrics collection activated: sync timeout %d",
 			c.MetricsSync)
@@ -125,23 +129,13 @@ func (c *DownloadCmd) Execute(args []string) error {
 	wp.Run()
 	log.Debugf("worker pool is running")
 
-	dp := discovery.NewGHProvider(
-		c.Org,
-		download,
-		&discovery.GHProviderOpts{
-			AuthToken: c.Token,
-		},
-	)
+	go runGHOrgProviders(log.New(nil), orgs, c.Token, download)
 
-	log.Debugf("github provider started")
-	if err := dp.Start(); err != nil &&
-		!gitcollector.ErrProviderStopped.Is(err) {
-		check(err, "github provider failed")
-	}
-
-	close(download)
 	wp.Wait()
 	log.Debugf("worker pool stopped successfully")
+
+	elapsed := time.Since(start).String()
+	log.Infof("collection finished in %s", elapsed)
 	return nil
 }
 
@@ -150,4 +144,65 @@ func check(err error, message string) {
 		log.Errorf(err, message)
 		os.Exit(1)
 	}
+}
+
+func setupMetrics(
+	uri, table string,
+	orgs []string,
+	metricSync int64,
+) gitcollector.MetricsCollector {
+	db, err := metrics.PrepareDB(uri, table, orgs)
+	check(err, "metrics database")
+
+	mcs := make(map[string]*metrics.Collector, len(orgs))
+	for _, org := range orgs {
+		mc := metrics.NewCollector(&metrics.CollectorOpts{
+			Log:      log.New(log.Fields{"org": org}),
+			Send:     metrics.SendToDB(db, table, org),
+			SyncTime: time.Duration(metricSync) * time.Second,
+		})
+
+		mcs[org] = mc
+	}
+
+	return metrics.NewCollectorByOrg(mcs)
+}
+
+func runGHOrgProviders(
+	logger log.Logger,
+	orgs []string,
+	token string,
+	download chan gitcollector.Job,
+) {
+	var wg sync.WaitGroup
+	wg.Add(len(orgs))
+	for _, o := range orgs {
+		org := o
+		p := discovery.NewGHProvider(
+			download,
+			discovery.NewGHOrgReposIter(
+				org,
+				&discovery.GHReposIterOpts{
+					AuthToken: token,
+				},
+			),
+			&discovery.GHProviderOpts{},
+		)
+
+		go func() {
+			err := p.Start()
+			if err != nil &&
+				!discovery.ErrNewRepositoriesNotFound.Is(err) {
+				logger.Warningf(err.Error())
+			}
+
+			logger.Debugf("%s organization provider stopped", org)
+			wg.Done()
+		}()
+
+		logger.Debugf("%s organization provider started", org)
+	}
+
+	wg.Wait()
+	close(download)
 }

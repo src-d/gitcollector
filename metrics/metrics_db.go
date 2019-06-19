@@ -13,7 +13,7 @@ import (
 
 // PrepareDB performs the necessary operations to send metrics to a postgres
 // database.
-func PrepareDB(uri string, table, org string) (*sql.DB, error) {
+func PrepareDB(uri string, table string, orgs []string) (*sql.DB, error) {
 	db, err := sql.Open("postgres", uri)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,11 @@ func PrepareDB(uri string, table, org string) (*sql.DB, error) {
 	statements := []string{
 		fmt.Sprintf(create, table),
 		fmt.Sprintf(addColumns, table),
-		fmt.Sprintf(insert, table, org),
+	}
+
+	for _, org := range orgs {
+		statements = append(statements,
+			fmt.Sprintf(insert, table, org))
 	}
 
 	tx, err := db.Begin()
@@ -62,7 +66,7 @@ const (
 
 	insert = `INSERT INTO %[1]s(org, discovered, downloaded, updated, failed)
 	SELECT '%[2]s',0,0,0,0
-	WHERE NOT EXISTS (SELECT * FROM %[1]s)`
+	WHERE NOT EXISTS (SELECT * FROM %[1]s WHERE org='%[2]s')`
 
 	addColumns = `ALTER TABLE %s
 	ADD COLUMN IF NOT EXISTS discovered INTEGER,

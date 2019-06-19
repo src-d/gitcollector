@@ -2,7 +2,6 @@ package library
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/src-d/gitcollector"
@@ -68,14 +67,9 @@ func getAuthTokenByOrg(tokens map[string]string) AuthTokenFn {
 	}
 
 	return func(endpoint string) string {
-		id, _ := NewRepositoryID(endpoint)
-		org := getOrg(id)
+		org := GetOrgFromEndpoint(endpoint)
 		return tokens[org]
 	}
-}
-
-func getOrg(id borges.RepositoryID) string {
-	return strings.Split(id.String(), "/")[1]
 }
 
 var (
