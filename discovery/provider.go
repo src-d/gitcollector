@@ -23,18 +23,22 @@ var (
 	// repositories in the organization.
 	ErrNewRepositoriesNotFound = errors.NewKind(
 		"couldn't find new repositories")
+
+	// ErrRateLimitExceeded is returned when the api rate limit is reached.
+	ErrRateLimitExceeded = errors.NewKind("rate limit requests exceeded")
 )
 
 // GHProviderOpts represents configuration options for a GHProvider.
 type GHProviderOpts struct {
-	HTTPTimeout    time.Duration
-	ResultsPerPage int
-	WaitNewRepos   bool
-	TimeNewRepos   time.Duration
-	StopTimeout    time.Duration
-	EnqueueTimeout time.Duration
-	MaxJobBuffer   int
-	AuthToken      string
+	HTTPTimeout     time.Duration
+	ResultsPerPage  int
+	WaitNewRepos    bool
+	WaitOnRateLimit bool
+	TimeNewRepos    time.Duration
+	StopTimeout     time.Duration
+	EnqueueTimeout  time.Duration
+	MaxJobBuffer    int
+	AuthToken       string
 }
 
 // GHProvider is a gitcollector.Provider implementation. It will retrieve the
@@ -128,7 +132,15 @@ func (p *GHProvider) Start() error {
 					if ErrNewRepositoriesNotFound.Is(err) &&
 						!p.opts.WaitNewRepos {
 						return gitcollector.
-							ErrProviderStopped.New()
+							ErrProviderStopped.
+							Wrap(err)
+					}
+
+					if ErrRateLimitExceeded.Is(err) &&
+						!p.opts.WaitOnRateLimit {
+						return gitcollector.
+							ErrProviderStopped.
+							Wrap(err)
 					}
 
 					if retry <= 0 {
@@ -295,7 +307,7 @@ func (p *orgReposIter) requestRepos() (time.Duration, error) {
 			return -1, err
 		}
 
-		return timeToRetry(res), err
+		return timeToRetry(res), ErrRateLimitExceeded.Wrap(err)
 	}
 
 	bufRepos := repos
