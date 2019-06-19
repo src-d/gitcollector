@@ -19,54 +19,55 @@ func TestGHProvider(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	queue := make(chan gitcollector.Job, 200)
+	queue := make(chan gitcollector.Job, 50)
 	provider := NewGHProvider(
 		org,
 		queue,
 		&GHProviderOpts{
 			TimeNewRepos:   1 * time.Second,
-			ResultsPerPage: 70,
+			ResultsPerPage: 100,
 			AuthToken:      "",
+			MaxJobBuffer:   50,
 		},
 	)
 
 	var (
 		consumedJobs = make(chan gitcollector.Job, 200)
-		stopErr      = make(chan error, 1)
+		stop         bool
+		done         = make(chan struct{})
 	)
 
 	go func() {
-		var stop bool
+		defer func() { done <- struct{}{} }()
 		for !stop {
 			select {
-			case job := <-queue:
+			case job, ok := <-queue:
+				if !ok {
+					return
+				}
+
 				select {
 				case consumedJobs <- job:
 				case <-time.After(timeToStop):
 					stop = true
 				}
-			case <-time.After(timeToStop):
-				stop = true
 			}
 		}
-
-		stopErr <- provider.Stop()
 	}()
 
 	err := provider.Start()
-	req.True(
-		ErrNewRepositoriesNotFound.Is(err) ||
-			gitcollector.ErrProviderStopped.Is(err),
-	)
+	req.True(gitcollector.ErrProviderStopped.Is(err))
 
-	req.NoError(<-stopErr)
+	close(queue)
+	<-done
+	req.False(stop)
 	close(consumedJobs)
-	for job := range consumedJobs {
-		j, ok := job.(*library.Job)
+
+	for j := range consumedJobs {
+		job, ok := j.(*library.Job)
 		req.True(ok)
-		req.Len(j.Endpoints, 1)
-		for _, ep := range j.Endpoints {
-			req.True(strings.Contains(ep, org))
-		}
+		req.True(job.Type == library.JobDownload)
+		req.Len(job.Endpoints, 1)
+		req.True(strings.Contains(job.Endpoints[0], org))
 	}
 }

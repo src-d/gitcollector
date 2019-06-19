@@ -54,7 +54,6 @@ var _ gitcollector.Provider = (*GHProvider)(nil)
 const (
 	stopTimeout    = 10 * time.Second
 	enqueueTimeout = 5 * time.Second
-	maxJobBuffer   = 100
 )
 
 // NewGHProvider builds a new Provider
@@ -76,7 +75,7 @@ func NewGHProvider(
 	}
 
 	if opts.MaxJobBuffer <= 0 {
-		opts.MaxJobBuffer = maxJobBuffer
+		opts.MaxJobBuffer = cap(queue) * 2
 	}
 
 	return &GHProvider{
@@ -163,8 +162,7 @@ func (p *GHProvider) Start() error {
 					p.backoff.Reset()
 				}
 			case <-time.After(p.opts.EnqueueTimeout):
-				if !retried &&
-					len(retryJobs) < p.opts.MaxJobBuffer {
+				if len(retryJobs) < p.opts.MaxJobBuffer {
 					retryJobs = append(retryJobs, job)
 				}
 
