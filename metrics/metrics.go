@@ -92,9 +92,9 @@ const (
 )
 
 // Start implements the gitcollector.MetricsCollector interface.
-func (mc *Collector) Start() {
-	mc.wg.Add(1)
-	defer mc.wg.Done()
+func (c *Collector) Start() {
+	c.wg.Add(1)
+	defer c.wg.Done()
 
 	var (
 		stop     bool
@@ -104,40 +104,40 @@ func (mc *Collector) Start() {
 		waiting  bool
 	)
 
-	for !(mc.isClosed() || stop) {
+	for !(c.isClosed() || stop) {
 		var (
 			j    gitcollector.Job
 			kind int
 		)
 
 		select {
-		case job, ok := <-mc.success:
+		case job, ok := <-c.success:
 			if !ok {
-				mc.success = nil
+				c.success = nil
 				continue
 			}
 
 			j, kind = job, successKind
-		case job, ok := <-mc.fail:
+		case job, ok := <-c.fail:
 			if !ok {
-				mc.fail = nil
+				c.fail = nil
 				continue
 			}
 
 			j, kind = job, failKind
-		case job, ok := <-mc.discover:
+		case job, ok := <-c.discover:
 			if !ok {
-				mc.discover = nil
+				c.discover = nil
 				continue
 			}
 
 			j, kind = job, discoverKind
-		case stop = <-mc.cancel:
-			mc.close()
+		case stop = <-c.cancel:
+			c.close()
 			continue
 		case <-time.After(waitTimeout):
 			if !waiting {
-				mc.logger.Debugf("waiting new metrics")
+				c.logger.Debugf("waiting new metrics")
 				waiting = true
 			}
 		}
@@ -146,11 +146,11 @@ func (mc *Collector) Start() {
 			var ok bool
 			job, ok = j.(*library.Job)
 			if !ok {
-				mc.logger.Warningf("wrong job found: %T", j)
+				c.logger.Warningf("wrong job found: %T", j)
 				continue
 			}
 
-			if err := mc.modifyMetrics(job, kind); err != nil {
+			if err := c.modifyMetrics(job, kind); err != nil {
 				log.Warningf(err.Error())
 				continue
 			}
@@ -159,13 +159,13 @@ func (mc *Collector) Start() {
 			waiting = false
 		}
 
-		if mc.sendMetric(batch, lastSent) {
-			if err := mc.opts.Send(
+		if c.sendMetric(batch, lastSent) {
+			if err := c.opts.Send(
 				context.TODO(),
-				mc,
+				c,
 				job,
 			); err != nil {
-				mc.logger.Warningf(
+				c.logger.Warningf(
 					"couldn't send metrics: %s",
 					err.Error(),
 				)
@@ -173,7 +173,7 @@ func (mc *Collector) Start() {
 				continue
 			}
 
-			mc.logMetrics(true)
+			c.logMetrics(true)
 			lastSent = time.Now()
 			batch = 0
 			waiting = false
@@ -181,23 +181,23 @@ func (mc *Collector) Start() {
 	}
 
 	if batch > 0 && !stop {
-		if err := mc.opts.Send(context.TODO(), mc, job); err != nil {
-			mc.logger.Warningf(
+		if err := c.opts.Send(context.TODO(), c, job); err != nil {
+			c.logger.Warningf(
 				"couldn't send metrics: %s",
 				err.Error(),
 			)
 		}
 	}
 
-	mc.logMetrics(false)
+	c.logMetrics(false)
 }
 
-func (mc *Collector) logMetrics(debug bool) {
-	logger := mc.logger.New(log.Fields{
-		"discover": mc.discoverCount,
-		"download": mc.successDownloadCount,
-		"update":   mc.successUpdateCount,
-		"fail":     mc.failCount,
+func (c *Collector) logMetrics(debug bool) {
+	logger := c.logger.New(log.Fields{
+		"discover": c.discoverCount,
+		"download": c.successDownloadCount,
+		"update":   c.successUpdateCount,
+		"fail":     c.failCount,
 	})
 
 	msg := "metrics updated"
@@ -208,36 +208,36 @@ func (mc *Collector) logMetrics(debug bool) {
 	}
 }
 
-func (mc *Collector) isClosed() bool {
-	return mc.success == nil && mc.fail == nil && mc.discover == nil
+func (c *Collector) isClosed() bool {
+	return c.success == nil && c.fail == nil && c.discover == nil
 }
 
-func (mc *Collector) close() {
-	close(mc.success)
-	close(mc.fail)
-	close(mc.discover)
-	close(mc.cancel)
-	mc.cancel = nil
+func (c *Collector) close() {
+	close(c.success)
+	close(c.fail)
+	close(c.discover)
+	close(c.cancel)
+	c.cancel = nil
 }
 
-func (mc *Collector) modifyMetrics(job *library.Job, kind int) error {
+func (c *Collector) modifyMetrics(job *library.Job, kind int) error {
 	switch kind {
 	case successKind:
 		if job.Type == library.JobDownload {
-			mc.successDownloadCount++
+			c.successDownloadCount++
 			break
 		}
 
 		for range job.Endpoints {
-			mc.successUpdateCount++
+			c.successUpdateCount++
 		}
 	case failKind:
 		for range job.Endpoints {
-			mc.failCount++
+			c.failCount++
 		}
 	case discoverKind:
 		if job.Type == library.JobDownload {
-			mc.discoverCount++
+			c.discoverCount++
 		}
 	default:
 		return fmt.Errorf("wrong metric type found: %d", kind)
@@ -246,42 +246,125 @@ func (mc *Collector) modifyMetrics(job *library.Job, kind int) error {
 	return nil
 }
 
-func (mc *Collector) sendMetric(batch int, lastSent time.Time) bool {
-	fullBatch := batch >= mc.opts.BatchSize
-	syncTimeout := time.Since(lastSent) >= mc.opts.SyncTime
+func (c *Collector) sendMetric(batch int, lastSent time.Time) bool {
+	fullBatch := batch >= c.opts.BatchSize
+	syncTimeout := time.Since(lastSent) >= c.opts.SyncTime
 	if syncTimeout {
 		msg := "sync timeout"
 		if batch == 0 {
 			msg += ": nothing to update"
 		}
 
-		mc.logger.Debugf(msg)
+		c.logger.Debugf(msg)
 	}
 
 	return fullBatch || (syncTimeout && batch > 0)
 }
 
 // Stop implements the gitcollector.MetricsCollector interface.
-func (mc *Collector) Stop(immediate bool) {
-	if mc.cancel == nil {
+func (c *Collector) Stop(immediate bool) {
+	if c.cancel == nil {
 		return
 	}
 
-	mc.cancel <- immediate
-	mc.wg.Wait()
+	c.cancel <- immediate
+	c.wg.Wait()
 }
 
 // Success implements the gitcollector.MetricsCollector interface.
-func (mc *Collector) Success(job gitcollector.Job) {
-	mc.success <- job
+func (c *Collector) Success(job gitcollector.Job) {
+	c.success <- job
 }
 
 // Fail implements the gitcollector.MetricsCollector interface.
-func (mc *Collector) Fail(job gitcollector.Job) {
-	mc.fail <- job
+func (c *Collector) Fail(job gitcollector.Job) {
+	c.fail <- job
 }
 
 // Discover implements the gitcollector.MetricsCollector interface.
-func (mc *Collector) Discover(job gitcollector.Job) {
-	mc.discover <- job
+func (c *Collector) Discover(job gitcollector.Job) {
+	c.discover <- job
+}
+
+// CollectorByOrg plays as a reverse proxy Collector for several organizations.
+type CollectorByOrg struct {
+	orgMetrics map[string]*Collector
+}
+
+// NewCollectorByOrg builds a new CollectorByOrg.
+func NewCollectorByOrg(orgsMetrics map[string]*Collector) *CollectorByOrg {
+	return &CollectorByOrg{
+		orgMetrics: orgsMetrics,
+	}
+}
+
+// Start implements the gitcollector.MetricsCollector interface.
+func (c *CollectorByOrg) Start() {
+	for _, m := range c.orgMetrics {
+		go m.Start()
+	}
+}
+
+// Stop implements the gitcollector.MetricsCollector interface.
+func (c *CollectorByOrg) Stop(immediate bool) {
+	for _, m := range c.orgMetrics {
+		m.Stop(immediate)
+	}
+}
+
+// Success implements the gitcollector.MetricsCollector interface.
+func (c *CollectorByOrg) Success(job gitcollector.Job) {
+	orgs := triageJob(job)
+	for org, job := range orgs {
+		m, ok := c.orgMetrics[org]
+		if !ok {
+			continue
+		}
+
+		m.Success(job)
+	}
+}
+
+// Fail implements the gitcollector.MetricsCollector interface.
+func (c *CollectorByOrg) Fail(job gitcollector.Job) {
+	orgs := triageJob(job)
+	for org, job := range orgs {
+		m, ok := c.orgMetrics[org]
+		if !ok {
+			continue
+		}
+
+		m.Fail(job)
+	}
+}
+
+// Discover implements the gitcollector.MetricsCollector interface.
+func (c *CollectorByOrg) Discover(job gitcollector.Job) {
+	orgs := triageJob(job)
+	for org, job := range orgs {
+		m, ok := c.orgMetrics[org]
+		if !ok {
+			continue
+		}
+
+		m.Discover(job)
+	}
+}
+
+func triageJob(job gitcollector.Job) map[string]*library.Job {
+	organizations := map[string]*library.Job{}
+	lj, _ := job.(*library.Job)
+	for _, ep := range lj.Endpoints {
+		org := library.GetOrgFromEndpoint(ep)
+		j, ok := organizations[org]
+		if !ok {
+			j = &(*lj)
+			j.Endpoints = []string{}
+			organizations[org] = j
+		}
+
+		j.Endpoints = append(j.Endpoints, ep)
+	}
+
+	return organizations
 }
