@@ -126,11 +126,14 @@ func (c *DownloadCmd) Execute(args []string) error {
 	log.Debugf("worker pool is running")
 
 	dp := discovery.NewGHProvider(
-		c.Org,
 		download,
-		&discovery.GHProviderOpts{
-			AuthToken: c.Token,
-		},
+		discovery.NewGHOrgReposIter(
+			c.Org,
+			&discovery.GHReposIterOpts{
+				AuthToken: c.Token,
+			},
+		),
+		&discovery.GHProviderOpts{},
 	)
 
 	log.Debugf("github provider started")

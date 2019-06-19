@@ -1,8 +1,6 @@
 package discovery
 
 import (
-	"context"
-	"net/http"
 	"time"
 
 	"github.com/src-d/gitcollector"
@@ -11,7 +9,6 @@ import (
 
 	"github.com/google/go-github/github"
 	"github.com/jpillora/backoff"
-	"golang.org/x/oauth2"
 )
 
 var (
@@ -28,24 +25,25 @@ var (
 	ErrRateLimitExceeded = errors.NewKind("rate limit requests exceeded")
 )
 
+// GHRepositoriesIter represents an iterator of *github.Repositories
+type GHRepositoriesIter interface {
+	Next() (*github.Repository, time.Duration, error)
+}
+
 // GHProviderOpts represents configuration options for a GHProvider.
 type GHProviderOpts struct {
-	HTTPTimeout     time.Duration
-	ResultsPerPage  int
 	WaitNewRepos    bool
 	WaitOnRateLimit bool
-	TimeNewRepos    time.Duration
 	StopTimeout     time.Duration
 	EnqueueTimeout  time.Duration
 	MaxJobBuffer    int
-	AuthToken       string
 }
 
 // GHProvider is a gitcollector.Provider implementation. It will retrieve the
 // information for all the repositories for the given github organization
 // to produce gitcollector.Jobs.
 type GHProvider struct {
-	iter    *orgReposIter
+	iter    GHRepositoriesIter
 	queue   chan<- gitcollector.Job
 	cancel  chan struct{}
 	stopped chan struct{}
@@ -62,8 +60,8 @@ const (
 
 // NewGHProvider builds a new Provider
 func NewGHProvider(
-	org string,
 	queue chan<- gitcollector.Job,
+	iter GHRepositoriesIter,
 	opts *GHProviderOpts,
 ) *GHProvider {
 	if opts == nil {
@@ -83,7 +81,7 @@ func NewGHProvider(
 	}
 
 	return &GHProvider{
-		iter:    newOrgReposIter(org, opts),
+		iter:    iter,
 		queue:   queue,
 		cancel:  make(chan struct{}),
 		stopped: make(chan struct{}, 1),
@@ -222,136 +220,4 @@ func (p *GHProvider) Stop() error {
 	case <-time.After(p.opts.StopTimeout):
 		return gitcollector.ErrProviderStop.New()
 	}
-}
-
-const (
-	httpTimeout    = 30 * time.Second
-	resultsPerPage = 100
-	waitNewRepos   = 24 * time.Hour
-)
-
-type orgReposIter struct {
-	org          string
-	client       *github.Client
-	repos        []*github.Repository
-	checkpoint   int
-	opts         *github.RepositoryListByOrgOptions
-	waitNewRepos time.Duration
-}
-
-func newOrgReposIter(org string, conf *GHProviderOpts) *orgReposIter {
-	to := conf.HTTPTimeout
-	if to <= 0 {
-		to = httpTimeout
-	}
-
-	rpp := conf.ResultsPerPage
-	if rpp <= 0 || rpp > 100 {
-		rpp = resultsPerPage
-	}
-
-	wnr := conf.TimeNewRepos
-	if wnr <= 0 {
-		wnr = waitNewRepos
-	}
-
-	return &orgReposIter{
-		org:    org,
-		client: newGithubClient(conf.AuthToken, to),
-		opts: &github.RepositoryListByOrgOptions{
-			ListOptions: github.ListOptions{PerPage: rpp},
-		},
-		waitNewRepos: wnr,
-	}
-}
-
-func newGithubClient(token string, timeout time.Duration) *github.Client {
-	var client *http.Client
-	if token == "" {
-		client = &http.Client{}
-	} else {
-		client = oauth2.NewClient(
-			context.Background(),
-			oauth2.StaticTokenSource(
-				&oauth2.Token{AccessToken: token},
-			),
-		)
-	}
-
-	client.Timeout = timeout
-	return github.NewClient(client)
-}
-
-func (p *orgReposIter) Next() (*github.Repository, time.Duration, error) {
-	if len(p.repos) == 0 {
-		retry, err := p.requestRepos()
-		if err != nil && len(p.repos) == 0 {
-			return nil, retry, err
-		}
-	}
-
-	var next *github.Repository
-	next, p.repos = p.repos[0], p.repos[1:]
-	return next, 0, nil
-}
-
-func (p *orgReposIter) requestRepos() (time.Duration, error) {
-	repos, res, err := p.client.Repositories.ListByOrg(
-		context.Background(),
-		p.org,
-		p.opts,
-	)
-
-	if err != nil {
-		if _, ok := err.(*github.RateLimitError); !ok {
-			return -1, err
-		}
-
-		return timeToRetry(res), ErrRateLimitExceeded.Wrap(err)
-	}
-
-	bufRepos := repos
-	if p.checkpoint > 0 {
-		i := p.checkpoint
-		if len(repos) < p.checkpoint {
-			// return err?
-			i = 0
-		}
-
-		bufRepos = repos[i:]
-	}
-
-	if len(repos) < p.opts.PerPage {
-		p.checkpoint = len(repos)
-	}
-
-	err = nil
-	if res.NextPage == 0 {
-		if len(repos) == p.opts.PerPage {
-			p.opts.Page++
-		}
-
-		err = ErrNewRepositoriesNotFound.New()
-	} else {
-		p.opts.Page = res.NextPage
-	}
-
-	p.repos = bufRepos
-	return p.waitNewRepos, err
-}
-
-func timeToRetry(res *github.Response) time.Duration {
-	now := time.Now().UTC().Unix()
-	resetTime := res.Rate.Reset.UTC().Unix()
-	timeToReset := time.Duration(resetTime-now) * time.Second
-	remaining := res.Rate.Remaining
-	if timeToReset < 0 || timeToReset > 1*time.Hour {
-		// If this happens, the system clock is probably wrong, so we
-		// assume we are at the beginning of the window and consider
-		// only total requests per hour.
-		timeToReset = 1 * time.Hour
-		remaining = res.Rate.Limit
-	}
-
-	return timeToReset / time.Duration(remaining+1)
 }
