@@ -22,7 +22,8 @@ Rooted repositories have a few particularities that you should know to work with
 - They have no `HEAD` reference.
 - All references are of the following form: `{REFERENCE_NAME}/{REMOTE_NAME}`. For example, the reference `refs/heads/master` of the remote `foo` would be `/refs/heads/master/foo`.
 - Each remote represents a repository that shares the common history of the rooted repository. A remote can have multiple endpoints.
-- A rooted repository is simply a repository with all the git objects that are reachable from a root commit. That means a repository with multiple roots may be split across several rooted repositories instead of being in just one.
+- A rooted repository is simply a repository with all the objects from all the repositories which share the same root commit.
+- The root commit for a repository is obtained following the first parent of each commit from HEAD.
 
 ## Getting started
 
