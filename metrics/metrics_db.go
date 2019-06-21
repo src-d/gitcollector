@@ -85,7 +85,7 @@ const (
 // SendToDB is a SendFn to persist metrics on a database.
 func SendToDB(db *sql.DB, table, org string) SendFn {
 	return func(
-		_ context.Context,
+		ctx context.Context,
 		mc *Collector,
 		_ *library.Job,
 	) error {
@@ -99,7 +99,7 @@ func SendToDB(db *sql.DB, table, org string) SendFn {
 			org,
 		)
 
-		_, err := db.Exec(statement)
+		_, err := db.ExecContext(ctx, statement)
 		return err
 	}
 }

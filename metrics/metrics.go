@@ -104,6 +104,7 @@ func (c *Collector) Start() {
 		waiting  bool
 	)
 
+	ctx := context.Background()
 	for !(c.isClosed() || stop) {
 		var (
 			j    gitcollector.Job
@@ -160,11 +161,7 @@ func (c *Collector) Start() {
 		}
 
 		if c.sendMetric(batch, lastSent) {
-			if err := c.opts.Send(
-				context.TODO(),
-				c,
-				job,
-			); err != nil {
+			if err := c.opts.Send(ctx, c, job); err != nil {
 				c.logger.Warningf(
 					"couldn't send metrics: %s",
 					err.Error(),
@@ -181,7 +178,7 @@ func (c *Collector) Start() {
 	}
 
 	if batch > 0 && !stop {
-		if err := c.opts.Send(context.TODO(), c, job); err != nil {
+		if err := c.opts.Send(ctx, c, job); err != nil {
 			c.logger.Warningf(
 				"couldn't send metrics: %s",
 				err.Error(),

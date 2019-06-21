@@ -59,7 +59,7 @@ func Download(ctx context.Context, job *library.Job) error {
 		return err
 	}
 
-	ok, _, locID, err := lib.Has(repoID)
+	ok, locID, err := libHas(ctx, lib, repoID)
 	if err != nil {
 		logger.Errorf(err, "failed")
 		return err
@@ -80,6 +80,7 @@ func Download(ctx context.Context, job *library.Job) error {
 	logger.Infof("started")
 	start := time.Now()
 	if err := downloadRepository(
+		ctx,
 		logger,
 		lib,
 		job.TempFS,
@@ -96,7 +97,35 @@ func Download(ctx context.Context, job *library.Job) error {
 	return nil
 }
 
+func libHas(
+	ctx context.Context,
+	lib borges.Library,
+	id borges.RepositoryID,
+) (bool, borges.LocationID, error) {
+	var (
+		ok    bool
+		locID borges.LocationID
+		err   error
+		done  = make(chan struct{})
+	)
+
+	go func() {
+		ok, _, locID, err = lib.Has(id)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		ok = false
+		err = ctx.Err()
+	}
+
+	return ok, locID, err
+}
+
 func downloadRepository(
+	ctx context.Context,
 	logger log.Logger,
 	lib *siva.Library,
 	tmp billy.Filesystem,
@@ -112,7 +141,10 @@ func downloadRepository(
 	token := authToken(endpoint)
 
 	start := time.Now()
-	repo, err := cloneRepo(tmp, clonePath, endpoint, id.String(), token)
+	repo, err := cloneRepo(
+		ctx, tmp, clonePath, endpoint, id.String(), token,
+	)
+
 	if err != nil {
 		return err
 	}
@@ -174,7 +206,7 @@ func downloadRepository(
 
 	if r == nil {
 		start = time.Now()
-		r, err = createRootedRepo(loc, id, tmp, clonePath)
+		r, err = createRootedRepo(ctx, loc, id, tmp, clonePath)
 		if err != nil {
 			return err
 		}
@@ -203,8 +235,8 @@ func downloadRepository(
 	}
 
 	start = time.Now()
-	if err := r.R().Fetch(
-		opts,
+	if err := r.R().FetchContext(
+		ctx, opts,
 	); err != nil && err != git.NoErrAlreadyUpToDate {
 		if err := r.Close(); err != nil {
 			logger.Warningf("couldn't close repository")
@@ -227,6 +259,7 @@ func downloadRepository(
 }
 
 func createRootedRepo(
+	ctx context.Context,
 	loc borges.Location,
 	repoID borges.RepositoryID,
 	clonedFS billy.Filesystem,
@@ -237,14 +270,25 @@ func createRootedRepo(
 		return nil, err
 	}
 
-	if err := recursiveCopy(
-		"/", repo.FS(),
-		clonedPath, clonedFS,
-	); err != nil {
-		return nil, err
+	done := make(chan struct{})
+	go func() {
+		err = recursiveCopy(
+			"/", repo.FS(),
+			clonedPath, clonedFS,
+		)
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		err = ctx.Err()
+		repo.Close()
+		repo = nil
 	}
 
-	return repo, nil
+	return repo, err
 }
 
 func recursiveCopy(

@@ -30,6 +30,7 @@ const (
 )
 
 func cloneRepo(
+	ctx context.Context,
 	fs billy.Filesystem,
 	path, endpoint, id, token string,
 ) (*git.Repository, error) {
@@ -66,7 +67,7 @@ func cloneRepo(
 		}
 	}
 
-	if err = remote.FetchContext(context.TODO(), opts); err != nil {
+	if err = remote.FetchContext(ctx, opts); err != nil {
 		util.RemoveAll(fs, path)
 		return nil, err
 	}

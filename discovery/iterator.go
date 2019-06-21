@@ -9,6 +9,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// GHRepositoriesIter represents an iterator of *github.Repositories
+type GHRepositoriesIter interface {
+	Next(context.Context) (*github.Repository, time.Duration, error)
+}
+
 // GHReposIterOpts represents configuration options for a GHReposIter.
 type GHReposIterOpts struct {
 	HTTPTimeout    time.Duration
@@ -84,9 +89,11 @@ func newGithubClient(token string, timeout time.Duration) *github.Client {
 }
 
 // Next implements the GHRepositoriesIter interface.
-func (p *GHOrgReposIter) Next() (*github.Repository, time.Duration, error) {
+func (p *GHOrgReposIter) Next(
+	ctx context.Context,
+) (*github.Repository, time.Duration, error) {
 	if len(p.repos) == 0 {
-		retry, err := p.requestRepos()
+		retry, err := p.requestRepos(ctx)
 		if err != nil && len(p.repos) == 0 {
 			return nil, retry, err
 		}
@@ -97,9 +104,11 @@ func (p *GHOrgReposIter) Next() (*github.Repository, time.Duration, error) {
 	return next, 0, nil
 }
 
-func (p *GHOrgReposIter) requestRepos() (time.Duration, error) {
+func (p *GHOrgReposIter) requestRepos(
+	ctx context.Context,
+) (time.Duration, error) {
 	repos, res, err := p.client.Repositories.ListByOrg(
-		context.Background(),
+		ctx,
 		p.org,
 		p.opts,
 	)

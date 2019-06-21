@@ -11,6 +11,7 @@ type Worker struct {
 	id      string
 	jobs    chan Job
 	cancel  chan bool
+	stopped bool
 	metrics MetricsCollector
 }
 
@@ -29,35 +30,37 @@ var (
 )
 
 // Start starts the Worker. It shouldn't be restarted after a call to Stop.
-func (w *Worker) Start() error {
-	var (
-		ok  = true
-		err error
-	)
-
-	for ok {
-		ok, err = w.consumeJob()
+func (w *Worker) Start() {
+	if w.stopped {
+		return
 	}
 
-	return err
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for {
+		if err := w.consumeJob(ctx); err != nil {
+			if errJobsClosed.Is(err) || errWorkerStopped.Is(err) {
+				close(w.cancel)
+			}
+
+			return
+		}
+	}
 }
 
-func (w *Worker) consumeJob() (bool, error) {
+func (w *Worker) consumeJob(ctx context.Context) error {
 	select {
 	case <-w.cancel:
-		return false, errWorkerStopped.New()
+		return errWorkerStopped.New()
 	case job, ok := <-w.jobs:
 		if !ok {
-			close(w.cancel)
-			return false, errJobsClosed.New()
+			return errJobsClosed.New()
 		}
 
 		var done = make(chan struct{})
 		go func() {
 			defer close(done)
-			if err := job.Process(
-				context.TODO(),
-			); err != nil {
+			if err := job.Process(ctx); err != nil {
 				w.metrics.Fail(job)
 				return
 			}
@@ -71,25 +74,19 @@ func (w *Worker) consumeJob() (bool, error) {
 				<-done
 			}
 
-			return false, errWorkerStopped.New()
+			return errWorkerStopped.New()
 		case <-done:
+			return nil
 		}
 	}
-
-	return true, nil
 }
 
 // Stop stops the Worker.
-func (w *Worker) Stop(immediate bool) error {
-	// if the jobs channel is found closed then the cancel channel will
-	// be also closed. Subsequent calls to the Stop method mustn't panic.
-	var err error
-	defer func() {
-		if r := recover(); r != nil {
-			err = errJobsClosed.New()
-		}
-	}()
+func (w *Worker) Stop(immediate bool) {
+	if w.stopped {
+		return
+	}
 
 	w.cancel <- immediate
-	return err
+	w.stopped = true
 }
