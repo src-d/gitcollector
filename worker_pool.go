@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-// WorkerPool holds a pool of workers.
+// WorkerPool holds a pool of workers to process Jobs.
 type WorkerPool struct {
 	scheduler *JobScheduler
 	metrics   MetricsCollector

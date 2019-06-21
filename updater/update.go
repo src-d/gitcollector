@@ -20,7 +20,7 @@ var (
 
 // Update is a library.JobFn function to update a git repository alreayd stored
 // in a borges.Library.
-func Update(_ context.Context, job *library.Job) error {
+func Update(ctx context.Context, job *library.Job) error {
 	logger := job.Logger.New(log.Fields{"job": "update", "id": job.ID})
 	if job.Type != library.JobUpdate {
 		err := ErrNotUpdateJob.New()
@@ -91,6 +91,7 @@ func Update(_ context.Context, job *library.Job) error {
 	logger.Infof("started")
 	start := time.Now()
 	if err := updateRepository(
+		ctx,
 		logger,
 		repo,
 		remotes,
@@ -129,6 +130,7 @@ func remotesToUpdate(repo borges.Repository, remote string) ([]*git.Remote, erro
 }
 
 func updateRepository(
+	ctx context.Context,
 	logger log.Logger,
 	repo borges.Repository,
 	remotes []*git.Remote,
@@ -149,7 +151,7 @@ func updateRepository(
 			}
 		}
 
-		err := remote.Fetch(opts)
+		err := remote.FetchContext(ctx, opts)
 		if err != nil && err != git.NoErrAlreadyUpToDate {
 			if err := repo.Close(); err != nil {
 				logger.Warningf("couldn't close repository")
