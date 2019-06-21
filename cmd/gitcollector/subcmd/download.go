@@ -28,6 +28,7 @@ type DownloadCmd struct {
 	LibBucket       int    `long:"bucket" description:"library bucketization level" env:"GITCOLLECTOR_LIBRARY_BUCKET" default:"2"`
 	TmpPath         string `long:"tmp" description:"directory to place generated temporal files" default:"/tmp" env:"GITCOLLECTOR_TMP"`
 	Workers         int    `long:"workers" description:"number of workers, default to GOMAXPROCS" env:"GITCOLLECTOR_WORKERS"`
+	HalfCPU         bool   `long:"half-cpu" description:"set the number of workers to half of the set workers" env:"GITCOLLECTOR_HALF_CPU"`
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
 	Orgs            string `long:"orgs" env:"GITHUB_ORGANIZATIONS" description:"list of github organization names separated by comma" required:"true"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
@@ -87,6 +88,10 @@ func (c *DownloadCmd) Execute(args []string) error {
 	workers := c.Workers
 	if workers == 0 {
 		workers = runtime.GOMAXPROCS(-1)
+	}
+
+	if c.HalfCPU && workers > 1 {
+		workers = workers / 2
 	}
 
 	updateOnDownload := !c.NotAllowUpdates
