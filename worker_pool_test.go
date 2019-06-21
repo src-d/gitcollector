@@ -14,10 +14,7 @@ func TestWorkerPool(t *testing.T) {
 	require.True(true)
 
 	queue := make(chan Job, 20)
-	wp := NewWorkerPool(
-		NewJobScheduler(testScheduleFn(queue), &JobSchedulerOpts{}),
-		nil,
-	)
+	wp := NewWorkerPool(testScheduleFn(queue), &WorkerPoolOpts{})
 
 	numWorkers := []int{2, 8, 0}
 	for _, n := range numWorkers {
@@ -56,10 +53,7 @@ func TestWorkerPool(t *testing.T) {
 	require.ElementsMatch(ids, got)
 
 	queue = make(chan Job, 20)
-	wp.scheduler = NewJobScheduler(
-		testScheduleFn(queue),
-		&JobSchedulerOpts{},
-	)
+	wp = NewWorkerPool(testScheduleFn(queue), &WorkerPoolOpts{})
 
 	wp.SetWorkers(20)
 	wp.Run()
@@ -87,12 +81,12 @@ func (j *testJob) Process(_ context.Context) error {
 	return j.process(j.id)
 }
 
-func testScheduleFn(queue chan Job) ScheduleFn {
-	return func(*JobSchedulerOpts) (Job, error) {
+func testScheduleFn(queue chan Job) JobScheduleFn {
+	return func(_ context.Context) (Job, error) {
 		select {
 		case job, ok := <-queue:
 			if !ok {
-				return nil, ErrClosedChannel.New()
+				return nil, ErrJobSource.New()
 			}
 
 			return job, nil

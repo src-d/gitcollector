@@ -94,7 +94,7 @@ func (c *DownloadCmd) Execute(args []string) error {
 
 	download := make(chan gitcollector.Job, 100)
 
-	jobScheduleFn := library.NewDownloadJobScheduleFn(
+	schedule := library.NewDownloadJobScheduleFn(
 		lib,
 		download,
 		downloader.Download,
@@ -102,11 +102,6 @@ func (c *DownloadCmd) Execute(args []string) error {
 		authTokens,
 		log.New(nil),
 		temp,
-	)
-
-	jobScheduler := gitcollector.NewJobScheduler(
-		jobScheduleFn,
-		&gitcollector.JobSchedulerOpts{},
 	)
 
 	var mc gitcollector.MetricsCollector
@@ -122,7 +117,13 @@ func (c *DownloadCmd) Execute(args []string) error {
 			c.MetricsSync)
 	}
 
-	wp := gitcollector.NewWorkerPool(jobScheduler, mc)
+	wp := gitcollector.NewWorkerPool(
+		schedule,
+		&gitcollector.WorkerPoolOpts{
+			Metrics: mc,
+		},
+	)
+
 	wp.SetWorkers(workers)
 	log.Debugf("number of workers in the pool %d", wp.Size())
 

@@ -6,8 +6,7 @@ import (
 	"gopkg.in/src-d/go-errors.v1"
 )
 
-// Worker is in charge of process gitcollector.Jobs.
-type Worker struct {
+type worker struct {
 	id      string
 	jobs    chan Job
 	cancel  chan bool
@@ -15,9 +14,8 @@ type Worker struct {
 	metrics MetricsCollector
 }
 
-// NewWorker builds a new Worker.
-func NewWorker(jobs chan Job, metrics MetricsCollector) *Worker {
-	return &Worker{
+func newWorker(jobs chan Job, metrics MetricsCollector) *worker {
+	return &worker{
 		jobs:    jobs,
 		cancel:  make(chan bool),
 		metrics: metrics,
@@ -29,8 +27,8 @@ var (
 	errWorkerStopped = errors.NewKind("worker was stopped")
 )
 
-// Start starts the Worker. It shouldn't be restarted after a call to Stop.
-func (w *Worker) Start() {
+func (w *worker) start() {
+	// It shouldn't be restarted after a call to stop.
 	if w.stopped {
 		return
 	}
@@ -48,7 +46,7 @@ func (w *Worker) Start() {
 	}
 }
 
-func (w *Worker) consumeJob(ctx context.Context) error {
+func (w *worker) consumeJob(ctx context.Context) error {
 	select {
 	case <-w.cancel:
 		return errWorkerStopped.New()
@@ -81,8 +79,7 @@ func (w *Worker) consumeJob(ctx context.Context) error {
 	}
 }
 
-// Stop stops the Worker.
-func (w *Worker) Stop(immediate bool) {
+func (w *worker) stop(immediate bool) {
 	if w.stopped {
 		return
 	}

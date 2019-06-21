@@ -2,7 +2,6 @@ package library
 
 import (
 	"context"
-	"time"
 
 	"github.com/src-d/gitcollector"
 	"github.com/src-d/go-borges"
@@ -73,8 +72,9 @@ func getAuthTokenByOrg(tokens map[string]string) AuthTokenFn {
 }
 
 var (
-	errWrongJob = errors.NewKind("wrong job found")
-	errNotJobID = errors.NewKind("couldn't assign an ID to a job")
+	errWrongJob   = errors.NewKind("wrong job found")
+	errNotJobID   = errors.NewKind("couldn't assign an ID to a job")
+	errClosedChan = errors.NewKind("channel closed")
 )
 
 // NewDownloadJobScheduleFn builds a new gitcollector.ScheduleFn that only
@@ -87,12 +87,14 @@ func NewDownloadJobScheduleFn(
 	authTokens map[string]string,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
-) gitcollector.ScheduleFn {
-	return func(
-		opts *gitcollector.JobSchedulerOpts,
-	) (gitcollector.Job, error) {
-		job, err := jobFrom(download, opts.JobTimeout)
+) gitcollector.JobScheduleFn {
+	return func(ctx context.Context) (gitcollector.Job, error) {
+		job, err := jobFrom(ctx, download)
 		if err != nil {
+			if errClosedChan.Is(err) {
+				err = gitcollector.ErrJobSource.New()
+			}
+
 			return nil, err
 		}
 
@@ -114,12 +116,14 @@ func NewUpdateJobScheduleFn(
 	updateFn JobFn,
 	authTokens map[string]string,
 	jobLogger log.Logger,
-) gitcollector.ScheduleFn {
-	return func(
-		opts *gitcollector.JobSchedulerOpts,
-	) (gitcollector.Job, error) {
-		job, err := jobFrom(update, opts.JobTimeout)
+) gitcollector.JobScheduleFn {
+	return func(ctx context.Context) (gitcollector.Job, error) {
+		job, err := jobFrom(ctx, update)
 		if err != nil {
+			if errClosedChan.Is(err) {
+				err = gitcollector.ErrJobSource.New()
+			}
+
 			return nil, err
 		}
 
@@ -141,49 +145,8 @@ func NewJobScheduleFn(
 	authTokens map[string]string,
 	jobLogger log.Logger,
 	temp billy.Filesystem,
-) gitcollector.ScheduleFn {
-	var (
-		downloadClosed bool
-		updateClosed   bool
-	)
-
-	return func(
-		opts *gitcollector.JobSchedulerOpts,
-	) (gitcollector.Job, error) {
-		var (
-			job *Job
-			err error
-		)
-
-		job, err = jobFrom(download, opts.JobTimeout)
-		if err != nil {
-			if !(gitcollector.ErrClosedChannel.Is(err) ||
-				gitcollector.ErrNewJobsNotFound.Is(err)) {
-				return nil, err
-			}
-
-			if gitcollector.ErrClosedChannel.Is(err) {
-				downloadClosed = true
-			}
-
-			if updateClosed {
-				return nil, err
-			}
-
-			job, err = jobFrom(update, opts.JobTimeout)
-			if gitcollector.ErrClosedChannel.Is(err) {
-				updateClosed = true
-			}
-
-			if downloadClosed && updateClosed {
-				return nil, gitcollector.ErrClosedChannel.New()
-			}
-
-			if err != nil {
-				return nil, err
-			}
-		}
-
+) gitcollector.JobScheduleFn {
+	setupJob := func(job *Job) error {
 		if job.Lib == nil {
 			job.Lib = lib
 		}
@@ -196,20 +159,82 @@ func NewJobScheduleFn(
 		case JobUpdate:
 			job.ProcessFn = updateFn
 		default:
-			return nil, errWrongJob.New()
+			return errWrongJob.New()
 		}
 
 		job.AuthToken = getAuthTokenByOrg(authTokens)
 		job.Logger = jobLogger
+		return nil
+	}
+
+	return func(ctx context.Context) (gitcollector.Job, error) {
+		if download == nil && update == nil {
+			return nil, gitcollector.ErrJobSource.New()
+		}
+
+		var (
+			job *Job
+			err error
+		)
+
+		if download != nil || len(download) > 0 {
+			job, err = jobFrom(ctx, download)
+			if err != nil {
+				if !(errClosedChan.Is(err) ||
+					gitcollector.ErrNewJobsNotFound.Is(err)) {
+					return nil, err
+				}
+
+				if errClosedChan.Is(err) {
+					println("CLOSE")
+					download = nil
+				}
+			}
+		}
+
+		if job != nil {
+			if err := setupJob(job); err != nil {
+				return nil, gitcollector.
+					ErrNewJobsNotFound.New()
+			}
+
+			return job, nil
+		}
+
+		if update == nil && download == nil {
+			return nil, gitcollector.ErrJobSource.New()
+		}
+
+		if update == nil {
+			return nil, gitcollector.ErrNewJobsNotFound.New()
+		}
+
+		job, err = jobFrom(ctx, update)
+		if err != nil {
+			if errClosedChan.Is(err) {
+				update = nil
+			}
+
+			return nil, gitcollector.ErrNewJobsNotFound.New()
+		}
+
+		if err := setupJob(job); err != nil {
+			return nil, gitcollector.ErrNewJobsNotFound.New()
+		}
+
 		return job, nil
 	}
 }
 
-func jobFrom(queue chan gitcollector.Job, timeout time.Duration) (*Job, error) {
+func jobFrom(ctx context.Context, queue chan gitcollector.Job) (*Job, error) {
+	if queue == nil {
+		return nil, errClosedChan.New()
+	}
+
 	select {
 	case j, ok := <-queue:
 		if !ok {
-			return nil, gitcollector.ErrClosedChannel.New()
+			return nil, errClosedChan.New()
 		}
 
 		job, ok := j.(*Job)
@@ -224,7 +249,7 @@ func jobFrom(queue chan gitcollector.Job, timeout time.Duration) (*Job, error) {
 
 		job.ID = id.String()
 		return job, nil
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		return nil, gitcollector.ErrNewJobsNotFound.New()
 	}
 }
