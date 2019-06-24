@@ -168,7 +168,7 @@ func setupMetrics(
 			SyncTime: time.Duration(metricSync) * time.Second,
 		})
 
-		mcs[org] = mc
+		mcs[strings.ToLower(org)] = mc
 	}
 
 	return metrics.NewCollectorByOrg(mcs)

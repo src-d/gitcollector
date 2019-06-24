@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -352,7 +353,7 @@ func triageJob(job gitcollector.Job) map[string]*library.Job {
 	organizations := map[string]*library.Job{}
 	lj, _ := job.(*library.Job)
 	for _, ep := range lj.Endpoints {
-		org := library.GetOrgFromEndpoint(ep)
+		org := strings.ToLower(library.GetOrgFromEndpoint(ep))
 		j, ok := organizations[org]
 		if !ok {
 			j = &(*lj)
