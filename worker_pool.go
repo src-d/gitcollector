@@ -2,39 +2,48 @@ package gitcollector
 
 import (
 	"sync"
+	"time"
 )
+
+// WorkerPoolOpts are configuration options for a JobScheduler.
+type WorkerPoolOpts struct {
+	SchedulerCapacity int
+	WaitJobTimeout    time.Duration
+	WaitNewJobTimeout time.Duration
+	NotWaitNewJobs    bool
+	Metrics           MetricsCollector
+}
 
 // WorkerPool holds a pool of workers to process Jobs.
 type WorkerPool struct {
-	scheduler *JobScheduler
-	metrics   MetricsCollector
-	workers   []*Worker
+	scheduler *jobScheduler
+	workers   []*worker
 	resize    chan struct{}
 	wg        sync.WaitGroup
+	opts      *WorkerPoolOpts
 }
 
 // NewWorkerPool builds a new WorkerPool.
 func NewWorkerPool(
-	scheduler *JobScheduler,
-	metrics MetricsCollector,
+	schedule JobScheduleFn,
+	opts *WorkerPoolOpts,
 ) *WorkerPool {
 	resize := make(chan struct{}, 1)
 	resize <- struct{}{}
-	if metrics == nil {
-		metrics = &hollowMetricsCollector{}
+	if opts.Metrics == nil {
+		opts.Metrics = &hollowMetricsCollector{}
 	}
 
 	return &WorkerPool{
-		scheduler: scheduler,
-		metrics:   metrics,
+		scheduler: newJobScheduler(schedule, opts),
 		resize:    resize,
+		opts:      opts,
 	}
 }
 
 // Run notify workers to start.
 func (wp *WorkerPool) Run() {
-	wp.scheduler.metrics = wp.metrics
-	go wp.metrics.Start()
+	go wp.opts.Metrics.Start()
 	go wp.scheduler.Schedule()
 }
 
@@ -68,9 +77,9 @@ func (wp *WorkerPool) SetWorkers(n int) {
 func (wp *WorkerPool) add(n int) {
 	wp.wg.Add(n)
 	for i := 0; i < n; i++ {
-		w := NewWorker(wp.scheduler.Jobs(), wp.metrics)
+		w := newWorker(wp.scheduler.jobs, wp.opts.Metrics)
 		go func() {
-			w.Start()
+			w.start()
 			wp.wg.Done()
 		}()
 
@@ -89,7 +98,7 @@ func (wp *WorkerPool) remove(n int) {
 	for _, w := range workersToStop {
 		worker := w
 		go func() {
-			worker.Stop(false)
+			worker.stop(false)
 			wg.Done()
 		}()
 	}
@@ -106,15 +115,15 @@ func (wp *WorkerPool) Wait() {
 
 	wp.wg.Wait()
 	wp.workers = nil
-	wp.metrics.Stop(false)
+	wp.opts.Metrics.Stop(false)
 }
 
 // Close stops all the workers in the pool waiting for the jobs to finish.
 func (wp *WorkerPool) Close() {
 	wp.SetWorkers(0)
 	wp.wg.Wait()
-	wp.scheduler.Finish()
-	wp.metrics.Stop(false)
+	wp.scheduler.finish()
+	wp.opts.Metrics.Stop(false)
 }
 
 // Stop stops all the workers in the pool immediately.
@@ -123,13 +132,13 @@ func (wp *WorkerPool) Stop() {
 	defer func() { wp.resize <- struct{}{} }()
 
 	for _, w := range wp.workers {
-		w.Stop(true)
+		w.stop(true)
 	}
 
 	wp.wg.Wait()
 	wp.workers = nil
-	wp.scheduler.Finish()
-	wp.metrics.Stop(true)
+	wp.scheduler.finish()
+	wp.opts.Metrics.Stop(true)
 }
 
 type hollowMetricsCollector struct{}

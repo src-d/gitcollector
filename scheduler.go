@@ -1,20 +1,31 @@
 package gitcollector
 
 import (
+	"context"
 	"time"
 
 	"gopkg.in/src-d/go-errors.v1"
 )
 
-// ScheduleFn is a function to schedule the next Job.
-type ScheduleFn func(*JobSchedulerOpts) (Job, error)
+var (
+	// ErrNewJobsNotFound must be returned by a JobScheduleFn when it can't
+	// find new Jobs.
+	ErrNewJobsNotFound = errors.NewKind(
+		"couldn't find new jobs to schedule")
 
-// JobSchedulerOpts are configuration options for a JobScheduler.
-type JobSchedulerOpts struct {
-	Capacity       int
-	NotWaitNewJobs bool
-	NewJobTimeout  time.Duration
-	JobTimeout     time.Duration
+	// ErrJobSource must be returned by a JobScheduleFn when the source of
+	// job is closed.
+	ErrJobSource = errors.NewKind("job source is closed")
+)
+
+// JobScheduleFn is a function to schedule the next Job.
+type JobScheduleFn func(context.Context) (Job, error)
+
+type jobScheduler struct {
+	jobs     chan Job
+	schedule JobScheduleFn
+	cancel   chan struct{}
+	opts     *WorkerPoolOpts
 }
 
 const (
@@ -23,67 +34,47 @@ const (
 	newJobTimeout = 30 * time.Second
 )
 
-var (
-	// ErrNewJobsNotFound is returned if there's no more jobs to schedule.
-	ErrNewJobsNotFound = errors.NewKind(
-		"couldn't find new jobs to schedule")
-
-	// ErrClosedChannel is returned if the jobs source is closed.
-	ErrClosedChannel = errors.NewKind("channel is closed")
-)
-
-// JobScheduler schedules the Jobs to be processed.
-type JobScheduler struct {
-	jobs     chan Job
-	schedule ScheduleFn
-	cancel   chan struct{}
-	metrics  MetricsCollector
-	opts     *JobSchedulerOpts
-}
-
-// NewJobScheduler builds a new JobScheduler.
-func NewJobScheduler(
-	schedule ScheduleFn,
-	opts *JobSchedulerOpts,
-) *JobScheduler {
-	if opts.Capacity <= 0 {
-		opts.Capacity = schedCapacity
+func newJobScheduler(
+	schedule JobScheduleFn,
+	opts *WorkerPoolOpts,
+) *jobScheduler {
+	if opts.SchedulerCapacity <= 0 {
+		opts.SchedulerCapacity = schedCapacity
 	}
 
-	if opts.JobTimeout <= 0 {
-		opts.JobTimeout = jobTimeout
+	if opts.WaitJobTimeout <= 0 {
+		opts.WaitJobTimeout = jobTimeout
 	}
 
-	if opts.NewJobTimeout <= 0 {
-		opts.NewJobTimeout = newJobTimeout
+	if opts.WaitNewJobTimeout <= 0 {
+		opts.WaitNewJobTimeout = newJobTimeout
 	}
 
-	return &JobScheduler{
-		jobs:     make(chan Job, opts.Capacity),
+	return &jobScheduler{
+		jobs:     make(chan Job, opts.SchedulerCapacity),
 		schedule: schedule,
 		cancel:   make(chan struct{}),
 		opts:     opts,
 	}
 }
 
-// Jobs returns the channel where the JobScheduler will schedule the Jobs.
-func (s *JobScheduler) Jobs() chan Job {
-	return s.jobs
-}
-
-// Finish finishes to schedule Jobs.
-func (s *JobScheduler) Finish() {
+func (s *jobScheduler) finish() {
 	s.cancel <- struct{}{}
 }
 
-// Schedule schedules Jobs.
-func (s *JobScheduler) Schedule() {
+func (s *jobScheduler) Schedule() {
 	for {
 		select {
 		case <-s.cancel:
 			return
 		default:
-			job, err := s.schedule(s.opts)
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				s.opts.WaitJobTimeout,
+			)
+
+			defer cancel()
+			job, err := s.schedule(ctx)
 			if err != nil {
 				if ErrNewJobsNotFound.Is(err) {
 					if s.opts.NotWaitNewJobs {
@@ -93,11 +84,12 @@ func (s *JobScheduler) Schedule() {
 					select {
 					case <-s.cancel:
 						return
-					case <-time.After(s.opts.NewJobTimeout):
+					case <-time.After(
+						s.opts.WaitNewJobTimeout):
 					}
 				}
 
-				if ErrClosedChannel.Is(err) {
+				if ErrJobSource.Is(err) {
 					close(s.jobs)
 					return
 				}
@@ -107,7 +99,7 @@ func (s *JobScheduler) Schedule() {
 
 			select {
 			case s.jobs <- job:
-				s.metrics.Discover(job)
+				s.opts.Metrics.Discover(job)
 			case <-s.cancel:
 				return
 			}

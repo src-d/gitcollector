@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"github.com/src-d/gitcollector"
-	"gopkg.in/src-d/go-log.v1"
-
 	"github.com/stretchr/testify/require"
+	"gopkg.in/src-d/go-log.v1"
 )
 
 func TestJobScheduleFn(t *testing.T) {
@@ -105,18 +104,15 @@ func TestUpdateJobScheduleFn(t *testing.T) {
 }
 
 func testScheduleFn(
-	sched gitcollector.ScheduleFn,
+	sched gitcollector.JobScheduleFn,
 	endpoints []string,
 	queues []chan gitcollector.Job,
 ) []string {
 	wp := gitcollector.NewWorkerPool(
-		gitcollector.NewJobScheduler(
-			sched,
-			&gitcollector.JobSchedulerOpts{
-				NotWaitNewJobs: true,
-			},
-		),
-		nil,
+		sched,
+		&gitcollector.WorkerPoolOpts{
+			NotWaitNewJobs: true,
+		},
 	)
 
 	wp.SetWorkers(10)
