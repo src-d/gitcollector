@@ -3,7 +3,7 @@ module github.com/src-d/gitcollector
 go 1.12
 
 require (
-	github.com/gliderlabs/ssh v0.2.0 // indirect
+	github.com/gliderlabs/ssh v0.2.2 // indirect
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/uuid v1.1.1
@@ -16,14 +16,14 @@ require (
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/src-d/envconfig v1.0.0 // indirect
-	github.com/src-d/go-borges v0.0.0-20190619084057-d02cf3fd6581
+	github.com/src-d/go-borges v0.0.0-20190624135448-6ee47472d565
 	github.com/stretchr/testify v1.3.0
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
-	golang.org/x/crypto v0.0.0-20190618222545-ea8f1a30c443 // indirect
-	golang.org/x/net v0.0.0-20190619014844-b5b0513f8c1b // indirect
+	golang.org/x/crypto v0.0.0-20190621222207-cc06ce4a13d4 // indirect
+	golang.org/x/net v0.0.0-20190620200207-3b0461eec859 // indirect
 	golang.org/x/oauth2 v0.0.0-20190523182746-aaccbc9213b0
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58 // indirect
-	golang.org/x/sys v0.0.0-20190618155005-516e3c20635f // indirect
+	golang.org/x/sys v0.0.0-20190624142023-c5567b49c5d0 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.0
 	gopkg.in/src-d/go-cli.v0 v0.0.0-20190422143124-3a646154da79
 	gopkg.in/src-d/go-errors.v1 v1.0.0

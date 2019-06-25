@@ -30,5 +30,6 @@ func NewRepositoryID(endpoint string) (borges.RepositoryID, error) {
 // GetOrgFromEndpoint retrieve the organization from an endpoint.
 func GetOrgFromEndpoint(endpoint string) string {
 	id, _ := NewRepositoryID(endpoint)
-	return strings.Split(id.String(), "/")[1]
+	org := strings.Split(id.String(), "/")[1]
+	return strings.ToLower(org)
 }
