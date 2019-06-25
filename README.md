@@ -9,7 +9,7 @@ storage space and keeping repositories up-to-date.
 
 ## Status
 
-The project is currently in **beta** stage.
+The project is in a preliminary stable stage and under active development.
 
 ## Storing repositories using rooted repositories
 
