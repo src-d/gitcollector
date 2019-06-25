@@ -41,7 +41,11 @@ type DownloadCmd struct {
 func (c *DownloadCmd) Execute(args []string) error {
 	start := time.Now()
 
-	orgs := strings.Split(c.Orgs, ",")
+	o := strings.Split(c.Orgs, ",")
+	orgs := make([]string, 0, len(o))
+	for _, org := range o {
+		orgs = append(orgs, strings.ToLower(org))
+	}
 
 	info, err := os.Stat(c.LibPath)
 	check(err, "wrong path to locate the library")
