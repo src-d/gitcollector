@@ -9,17 +9,16 @@ matrix:
 script:
   - GO111MODULE=on
   - make ci-script
-  
-before_deploy:
-  if: tag IS present 
-  - make packages
 
 jobs:
   include:
     - os: linux
       sudo: required
       dist: xenial
-      
+
+      before_deploy:
+      - make packages
+
       deploy:
         provider: releases
         api_key: $GITHUB_TOKEN
@@ -34,6 +33,9 @@ jobs:
 
     - os: osx
       osx_image: xcode10.2
+
+      before_deploy:
+      - make packages
 
       deploy:
         provider: releases
