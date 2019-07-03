@@ -30,6 +30,7 @@ type DownloadCmd struct {
 	Workers         int    `long:"workers" description:"number of workers, default to GOMAXPROCS" env:"GITCOLLECTOR_WORKERS"`
 	HalfCPU         bool   `long:"half-cpu" description:"set the number of workers to half of the set workers" env:"GITCOLLECTOR_HALF_CPU"`
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
+	NoForks         bool   `long:"no-forks" description:"github forked repositories will not be downloaded" env:"GITCOLLECTOR_NO_FORKS"`
 	Orgs            string `long:"orgs" env:"GITHUB_ORGANIZATIONS" description:"list of github organization names separated by comma" required:"true"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
 	MetricsDBURI    string `long:"metrics-db" env:"GITCOLLECTOR_METRICS_DB_URI" description:"uri to a database where metrics will be sent"`
@@ -139,7 +140,7 @@ func (c *DownloadCmd) Execute(args []string) error {
 	wp.Run()
 	log.Debugf("worker pool is running")
 
-	go runGHOrgProviders(log.New(nil), orgs, c.Token, download)
+	go runGHOrgProviders(log.New(nil), orgs, c.Token, download, c.NoForks)
 
 	wp.Wait()
 	log.Debugf("worker pool stopped successfully")
@@ -183,6 +184,7 @@ func runGHOrgProviders(
 	orgs []string,
 	token string,
 	download chan gitcollector.Job,
+	skipForks bool,
 ) {
 	var wg sync.WaitGroup
 	wg.Add(len(orgs))
@@ -196,7 +198,9 @@ func runGHOrgProviders(
 					AuthToken: token,
 				},
 			),
-			&discovery.GHProviderOpts{},
+			&discovery.GHProviderOpts{
+				SkipForks: skipForks,
+			},
 		)
 
 		go func() {

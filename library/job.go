@@ -186,7 +186,6 @@ func NewJobScheduleFn(
 				}
 
 				if errClosedChan.Is(err) {
-					println("CLOSE")
 					download = nil
 				}
 			}
