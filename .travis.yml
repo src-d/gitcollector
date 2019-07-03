@@ -9,13 +9,17 @@ matrix:
 script:
   - GO111MODULE=on
   - make ci-script
+  
+before_deploy:
+  if: tag IS present 
+  - make packages
 
 jobs:
   include:
     - os: linux
       sudo: required
       dist: xenial
-
+      
       deploy:
         provider: releases
         api_key: $GITHUB_TOKEN
