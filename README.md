@@ -31,7 +31,7 @@ Rooted repositories have a few particularities that you should know to work with
 
 gitcollector entry point usage is done through the subcommand `download` (at this time is the only subcommand):
 
-```
+```txt
 Usage:
   gitcollector [OPTIONS] download [download-OPTIONS]
 
@@ -43,7 +43,9 @@ Help Options:
           --bucket=                              library bucketization level (default: 2) [$GITCOLLECTOR_LIBRARY_BUCKET]
           --tmp=                                 directory to place generated temporal files (default: /tmp) [$GITCOLLECTOR_TMP]
           --workers=                             number of workers, default to GOMAXPROCS [$GITCOLLECTOR_WORKERS]
+          --half-cpu                             set the number of workers to half of the set workers [$GITCOLLECTOR_HALF_CPU]
           --no-updates                           don't allow updates on already downloaded repositories [$GITCOLLECTOR_NO_UPDATES]
+          --no-forks                             github forked repositories will not be downloaded [$GITCOLLECTOR_NO_FORKS]
           --orgs=                                list of github organization names separated by comma [$GITHUB_ORGANIZATIONS]
           --token=                               github token [$GITHUB_TOKEN]
           --metrics-db=                          uri to a database where metrics will be sent [$GITCOLLECTOR_METRICS_DB_URI]
