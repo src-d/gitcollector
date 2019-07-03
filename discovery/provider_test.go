@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,13 +20,14 @@ func TestGHProvider(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
+	token := os.Getenv("GITHUB_TOKEN")
 	queue := make(chan gitcollector.Job, 50)
 	provider := NewGHProvider(
 		queue,
 		NewGHOrgReposIter(org, &GHReposIterOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 100,
-			AuthToken:      "",
+			AuthToken:      token,
 		}),
 		&GHProviderOpts{
 			MaxJobBuffer: 50,
@@ -70,5 +72,44 @@ func TestGHProvider(t *testing.T) {
 		req.True(job.Type == library.JobDownload)
 		req.Len(job.Endpoints, 1)
 		req.True(strings.Contains(job.Endpoints[0], org))
+	}
+}
+
+func TestGHProviderSkipForks(t *testing.T) {
+	var req = require.New(t)
+	const org = "src-d"
+
+	token := os.Getenv("GITHUB_TOKEN")
+	queue := make(chan gitcollector.Job, 200)
+	provider := NewGHProvider(
+		queue,
+		NewGHOrgReposIter(org, &GHReposIterOpts{
+			AuthToken: token,
+		}),
+		&GHProviderOpts{
+			SkipForks:    true,
+			MaxJobBuffer: 50,
+		},
+	)
+
+	done := make(chan struct{})
+	var err error
+	go func() {
+		err = provider.Start()
+		close(done)
+	}()
+
+	<-done
+	req.True(ErrNewRepositoriesNotFound.Is(err), err.Error())
+	close(queue)
+	forkedRepos := []string{"or-tools", "PyHive", "go-oniguruma"}
+	for job := range queue {
+		j, ok := job.(*library.Job)
+		req.True(ok)
+		req.Len(j.Endpoints, 1)
+
+		for _, forked := range forkedRepos {
+			req.False(strings.Contains(j.Endpoints[0], forked))
+		}
 	}
 }

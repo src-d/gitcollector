@@ -28,6 +28,7 @@ var (
 
 // GHProviderOpts represents configuration options for a GHProvider.
 type GHProviderOpts struct {
+	SkipForks       bool
 	WaitNewRepos    bool
 	WaitOnRateLimit bool
 	StopTimeout     time.Duration
@@ -155,6 +156,10 @@ func (p *GHProvider) enqueueJob(ctx context.Context) error {
 			}
 
 			time.Sleep(retry)
+			return nil
+		}
+
+		if p.opts.SkipForks && repo.GetFork() {
 			return nil
 		}
 
