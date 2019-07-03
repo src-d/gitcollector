@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func TestGHProvider(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	token := os.Getenv("GITHUB_TOKEN")
+	token, _ := testToken()
 	queue := make(chan gitcollector.Job, 50)
 	provider := NewGHProvider(
 		queue,
@@ -79,7 +80,11 @@ func TestGHProviderSkipForks(t *testing.T) {
 	var req = require.New(t)
 	const org = "src-d"
 
-	token := os.Getenv("GITHUB_TOKEN")
+	token, skip := testToken()
+	if skip != nil {
+		t.Skip(skip.Error())
+	}
+
 	queue := make(chan gitcollector.Job, 200)
 	provider := NewGHProvider(
 		queue,
@@ -112,4 +117,16 @@ func TestGHProviderSkipForks(t *testing.T) {
 			req.False(strings.Contains(j.Endpoints[0], forked))
 		}
 	}
+}
+
+func testToken() (string, error) {
+	token := os.Getenv("GITHUB_TOKEN")
+	ci := os.Getenv("TRAVIS")
+	var err error
+	if token == "" && ci == "true" {
+		err = fmt.Errorf("test running on travis CI but " +
+			"couldn't find GITHUB_TOKEN")
+	}
+
+	return token, err
 }
