@@ -14,6 +14,7 @@ import (
 	"github.com/src-d/gitcollector/downloader"
 	"github.com/src-d/gitcollector/library"
 	"github.com/src-d/gitcollector/metrics"
+	"github.com/src-d/gitcollector/provider"
 	"github.com/src-d/go-borges/siva"
 	"gopkg.in/src-d/go-billy.v4/osfs"
 	"gopkg.in/src-d/go-cli.v0"
@@ -75,7 +76,7 @@ func (c *DownloadCmd) Execute(args []string) error {
 	log.Debugf("temporal dir: %s", tmpPath)
 	temp := osfs.New(tmpPath)
 
-	lib, err := siva.NewLibrary("test", fs, siva.LibraryOptions{
+	lib, err := siva.NewLibrary("test", fs, &siva.LibraryOptions{
 		Bucket:        2,
 		Transactional: true,
 		TempFS:        temp,
@@ -190,15 +191,11 @@ func runGHOrgProviders(
 	wg.Add(len(orgs))
 	for _, o := range orgs {
 		org := o
-		p := discovery.NewGHProvider(
+		p := provider.NewGitHubOrg(
+			org,
+			token,
 			download,
-			discovery.NewGHOrgReposIter(
-				org,
-				&discovery.GHReposIterOpts{
-					AuthToken: token,
-				},
-			),
-			&discovery.GHProviderOpts{
+			&discovery.GitHubOpts{
 				SkipForks: skipForks,
 			},
 		)

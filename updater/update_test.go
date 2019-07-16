@@ -100,7 +100,7 @@ func setupLocation(
 	var req = require.New(t)
 
 	fs := osfs.New(path)
-	lib, err := siva.NewLibrary("test", fs, siva.LibraryOptions{
+	lib, err := siva.NewLibrary("test", fs, &siva.LibraryOptions{
 		Transactional: true,
 	})
 	req.NoError(err)

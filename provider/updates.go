@@ -1,4 +1,4 @@
-package updater
+package provider
 
 import (
 	"time"
@@ -9,8 +9,16 @@ import (
 	"gopkg.in/src-d/go-errors.v1"
 )
 
-// UpdatesProviderOpts represents configuration options for an UpdatesProvider.
-type UpdatesProviderOpts struct {
+var (
+	// ErrUpdatesStopped is returned when a provider has been stopped.
+	ErrUpdatesStopped = errors.NewKind("provider stopped")
+
+	// ErrUpdatesStop is returned when a provider fails on Stop.
+	ErrUpdatesStop = errors.NewKind("provider failed on stop")
+)
+
+// UpdatesOpts represents configuration options for an Updates.
+type UpdatesOpts struct {
 	// TriggerOnce triggers the update just once and exits.
 	TriggerOnce bool
 	// TriggerInterval is the time interval elapsed between updates.
@@ -22,17 +30,17 @@ type UpdatesProviderOpts struct {
 	StopTimeout time.Duration
 }
 
-// UpdatesProvider is gitcollector.Provider implementation. It will periodically
+// Updates is a gitcollector.Provider implementation. It will periodically
 // trigger the gitcollector.Jobs production to update the git repositories hold
 // in a borges.Library
-type UpdatesProvider struct {
+type Updates struct {
 	lib    borges.Library
 	queue  chan<- gitcollector.Job
 	cancel chan struct{}
-	opts   *UpdatesProviderOpts
+	opts   *UpdatesOpts
 }
 
-var _ gitcollector.Provider = (*UpdatesProvider)(nil)
+var _ gitcollector.Provider = (*Updates)(nil)
 
 const (
 	triggerInterval = 24 * 7 * time.Hour
@@ -40,14 +48,14 @@ const (
 	enqueueTimeout  = 500 * time.Second
 )
 
-// NewUpdatesProvider builds a new UpdatesProviders.
-func NewUpdatesProvider(
+// NewUpdates builds a new Updates.
+func NewUpdates(
 	lib borges.Library,
 	queue chan<- gitcollector.Job,
-	opts *UpdatesProviderOpts,
-) *UpdatesProvider {
+	opts *UpdatesOpts,
+) *Updates {
 	if opts == nil {
-		opts = &UpdatesProviderOpts{}
+		opts = &UpdatesOpts{}
 	}
 
 	if opts.TriggerInterval <= 0 {
@@ -62,7 +70,7 @@ func NewUpdatesProvider(
 		opts.EnqueueTimeout = enqueueTimeout
 	}
 
-	return &UpdatesProvider{
+	return &Updates{
 		lib:    lib,
 		queue:  queue,
 		cancel: make(chan struct{}),
@@ -71,19 +79,19 @@ func NewUpdatesProvider(
 }
 
 // Start implements the gitcollector.Provider interface.
-func (p *UpdatesProvider) Start() error {
+func (p *Updates) Start() error {
 	if err := p.update(); err != nil {
 		return err
 	}
 
 	if p.opts.TriggerOnce {
-		return gitcollector.ErrProviderStopped.New()
+		return ErrUpdatesStopped.New()
 	}
 
 	for {
 		select {
 		case <-p.cancel:
-			return gitcollector.ErrProviderStopped.New()
+			return ErrUpdatesStopped.New()
 		case <-time.After(p.opts.TriggerInterval):
 			if err := p.update(); err != nil {
 				return err
@@ -94,7 +102,7 @@ func (p *UpdatesProvider) Start() error {
 
 var errEnqueueTimeout = errors.NewKind("update queue is full")
 
-func (p *UpdatesProvider) update() error {
+func (p *Updates) update() error {
 	var done = make(chan error)
 	go func() {
 		defer close(done)
@@ -122,7 +130,7 @@ func (p *UpdatesProvider) update() error {
 
 	select {
 	case <-p.cancel:
-		return gitcollector.ErrProviderStopped.New()
+		return ErrUpdatesStopped.New()
 	case err := <-done:
 		if err != nil {
 			return err
@@ -133,11 +141,11 @@ func (p *UpdatesProvider) update() error {
 }
 
 // Stop implements the gitcollector.Provider interface.
-func (p *UpdatesProvider) Stop() error {
+func (p *Updates) Stop() error {
 	select {
 	case p.cancel <- struct{}{}:
 		return nil
 	case <-time.After(p.opts.StopTimeout):
-		return gitcollector.ErrProviderStop.New()
+		return ErrUpdatesStop.New()
 	}
 }

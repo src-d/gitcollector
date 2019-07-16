@@ -2,8 +2,6 @@ package gitcollector
 
 import (
 	"context"
-
-	"gopkg.in/src-d/go-errors.v1"
 )
 
 // Job represents a gitcollector task.
@@ -25,14 +23,6 @@ type MetricsCollector interface {
 	// Discover register metrics about a discovered Job.
 	Discover(Job)
 }
-
-var (
-	// ErrProviderStopped is returned when a provider has been stopped.
-	ErrProviderStopped = errors.NewKind("provider stopped")
-
-	// ErrProviderStop is returned when a provider fails on Stop.
-	ErrProviderStop = errors.NewKind("provider failed on stop")
-)
 
 // Provider interface represents a service to generate new Jobs.
 type Provider interface {
