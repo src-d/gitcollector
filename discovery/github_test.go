@@ -1,19 +1,19 @@
 package discovery
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/src-d/gitcollector"
-	"github.com/src-d/gitcollector/library"
+	"github.com/google/go-github/github"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestGHProvider(t *testing.T) {
+func TestGitHub(t *testing.T) {
 	var req = require.New(t)
 
 	const (
@@ -22,36 +22,47 @@ func TestGHProvider(t *testing.T) {
 	)
 
 	token, _ := testToken()
-	queue := make(chan gitcollector.Job, 50)
-	provider := NewGHProvider(
-		queue,
+	queue := make(chan *github.Repository, 50)
+	advertiseRepos := func(
+		_ context.Context,
+		repos []*github.Repository,
+	) error {
+		for _, repo := range repos {
+			queue <- repo
+		}
+
+		return nil
+	}
+
+	discovery := NewGitHub(
+		advertiseRepos,
 		NewGHOrgReposIter(org, &GHReposIterOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 100,
 			AuthToken:      token,
 		}),
-		&GHProviderOpts{
+		&GitHubOpts{
 			MaxJobBuffer: 50,
 		},
 	)
 
 	var (
-		consumedJobs = make(chan gitcollector.Job, 200)
-		stop         bool
-		done         = make(chan struct{})
+		consumedRepos = make(chan *github.Repository, 200)
+		stop          bool
+		done          = make(chan struct{})
 	)
 
 	go func() {
 		defer func() { done <- struct{}{} }()
 		for !stop {
 			select {
-			case job, ok := <-queue:
+			case repo, ok := <-queue:
 				if !ok {
 					return
 				}
 
 				select {
-				case consumedJobs <- job:
+				case consumedRepos <- repo:
 				case <-time.After(timeToStop):
 					stop = true
 				}
@@ -59,24 +70,22 @@ func TestGHProvider(t *testing.T) {
 		}
 	}()
 
-	err := provider.Start()
-	req.True(gitcollector.ErrProviderStopped.Is(err))
+	err := discovery.Start()
+	req.True(ErrDiscoveryStopped.Is(err))
 
 	close(queue)
 	<-done
 	req.False(stop)
-	close(consumedJobs)
+	close(consumedRepos)
 
-	for j := range consumedJobs {
-		job, ok := j.(*library.Job)
-		req.True(ok)
-		req.True(job.Type == library.JobDownload)
-		req.Len(job.Endpoints, 1)
-		req.True(strings.Contains(job.Endpoints[0], org))
+	for repo := range consumedRepos {
+		ep, err := GetGHEndpoint(repo)
+		req.NoError(err)
+		req.True(strings.Contains(ep, org))
 	}
 }
 
-func TestGHProviderSkipForks(t *testing.T) {
+func TestGitHubSkipForks(t *testing.T) {
 	var req = require.New(t)
 	const org = "src-d"
 
@@ -85,13 +94,24 @@ func TestGHProviderSkipForks(t *testing.T) {
 		t.Skip(skip.Error())
 	}
 
-	queue := make(chan gitcollector.Job, 200)
-	provider := NewGHProvider(
-		queue,
+	queue := make(chan *github.Repository, 200)
+	advertiseRepos := func(
+		_ context.Context,
+		repos []*github.Repository,
+	) error {
+		for _, repo := range repos {
+			queue <- repo
+		}
+
+		return nil
+	}
+
+	discovery := NewGitHub(
+		advertiseRepos,
 		NewGHOrgReposIter(org, &GHReposIterOpts{
 			AuthToken: token,
 		}),
-		&GHProviderOpts{
+		&GitHubOpts{
 			SkipForks:    true,
 			MaxJobBuffer: 50,
 		},
@@ -100,7 +120,7 @@ func TestGHProviderSkipForks(t *testing.T) {
 	done := make(chan struct{})
 	var err error
 	go func() {
-		err = provider.Start()
+		err = discovery.Start()
 		close(done)
 	}()
 
@@ -108,13 +128,13 @@ func TestGHProviderSkipForks(t *testing.T) {
 	req.True(ErrNewRepositoriesNotFound.Is(err), err.Error())
 	close(queue)
 	forkedRepos := []string{"or-tools", "PyHive", "go-oniguruma"}
-	for job := range queue {
-		j, ok := job.(*library.Job)
-		req.True(ok)
-		req.Len(j.Endpoints, 1)
+	for repo := range queue {
+		ep, err := GetGHEndpoint(repo)
+		req.NoError(err)
+		req.True(strings.Contains(ep, org))
 
 		for _, forked := range forkedRepos {
-			req.False(strings.Contains(j.Endpoints[0], forked))
+			req.False(strings.Contains(ep, forked))
 		}
 	}
 }

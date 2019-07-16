@@ -106,7 +106,10 @@ func Update(ctx context.Context, job *library.Job) error {
 	return nil
 }
 
-func remotesToUpdate(repo borges.Repository, remote string) ([]*git.Remote, error) {
+func remotesToUpdate(
+	repo borges.Repository,
+	remote string,
+) ([]*git.Remote, error) {
 	var (
 		remotes []*git.Remote
 		err     error

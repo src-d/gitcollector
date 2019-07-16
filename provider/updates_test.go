@@ -1,4 +1,4 @@
-package updater
+package provider
 
 import (
 	"sync"
@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdatesProvider(t *testing.T) {
+func TestUpdates(t *testing.T) {
 	var require = require.New(t)
 	require.True(true)
 
@@ -24,7 +24,7 @@ func TestUpdatesProvider(t *testing.T) {
 	lib := &testLib{locIDs: ids[:3]}
 
 	queue := make(chan gitcollector.Job, 30)
-	provider := NewUpdatesProvider(lib, queue, &UpdatesProviderOpts{
+	provider := NewUpdates(lib, queue, &UpdatesOpts{
 		TriggerOnce:     true,
 		TriggerInterval: 500 * time.Microsecond,
 	})
@@ -55,11 +55,11 @@ func TestUpdatesProvider(t *testing.T) {
 	}
 }
 
-func runProvider(t *testing.T, provider *UpdatesProvider) {
+func runProvider(t *testing.T, provider *Updates) {
 	t.Helper()
 	require.True(
 		t,
-		gitcollector.ErrProviderStopped.Is(provider.Start()),
+		ErrUpdatesStopped.Is(provider.Start()),
 	)
 }
 

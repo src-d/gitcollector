@@ -38,7 +38,7 @@ func TestDownload(t *testing.T) {
 	req.NoError(os.Mkdir(downloaderPath, 0775))
 	temp := osfs.New(downloaderPath)
 
-	lib, err := siva.NewLibrary("test", fs, siva.LibraryOptions{
+	lib, err := siva.NewLibrary("test", fs, &siva.LibraryOptions{
 		Bucket:        2,
 		Transactional: true,
 	})
