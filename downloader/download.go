@@ -3,8 +3,6 @@ package downloader
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -16,8 +14,6 @@ import (
 	"gopkg.in/src-d/go-billy.v4"
 	"gopkg.in/src-d/go-billy.v4/util"
 	"gopkg.in/src-d/go-errors.v1"
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 	"gopkg.in/src-d/go-log.v1"
 )
 
@@ -141,7 +137,7 @@ func downloadRepository(
 	token := authToken(endpoint)
 
 	start := time.Now()
-	repo, err := cloneRepo(
+	repo, err := CloneRepository(
 		ctx, tmp, clonePath, endpoint, id.String(), token,
 	)
 
@@ -158,17 +154,8 @@ func downloadRepository(
 		}
 	}()
 
-	commit, err := headCommit(repo, id.String())
-	if err != nil {
-		return err
-	}
-
-	logger.With(log.Fields{
-		"head": commit.Hash.String(),
-	}).Debugf("head commit found")
-
 	start = time.Now()
-	root, err := rootCommit(repo, commit)
+	root, err := RootCommit(repo, id.String())
 	if err != nil {
 		return err
 	}
@@ -179,69 +166,23 @@ func downloadRepository(
 		"root":    root.Hash.String(),
 	}).Debugf("root commit found")
 
-	var (
-		locID = borges.LocationID(root.Hash.String())
-		r     borges.Repository
+	start = time.Now()
+	locID := borges.LocationID(root.Hash.String())
+	r, err := PrepareRepository(
+		ctx, lib, locID, id, endpoint, tmp, clonePath,
 	)
 
-	loc, err := lib.AddLocation(locID)
 	if err != nil {
-		if !siva.ErrLocationExists.Is(err) {
-			return err
-		}
-
-		loc, err = lib.Location(locID)
-		if err != nil {
-			return err
-		}
-
-		r, err = loc.Get(id, borges.RWMode)
-		if err != nil {
-			r, err = loc.Init(id)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if r == nil {
-		start = time.Now()
-		r, err = createRootedRepo(ctx, loc, id, tmp, clonePath)
-		if err != nil {
-			return err
-		}
-
-		elapsed = time.Since(start).String()
-		logger.With(log.Fields{"elapsed": elapsed}).Debugf("copied")
-	}
-
-	if _, err := createRemote(r.R(), id.String(), endpoint); err != nil {
-		if err := r.Close(); err != nil {
-			logger.Warningf("couldn't close repository")
-		}
-
 		return err
 	}
 
-	opts := &git.FetchOptions{
-		RemoteName: id.String(),
-	}
-
-	if token != "" {
-		opts.Auth = &http.BasicAuth{
-			Username: "gitcollector",
-			Password: token,
-		}
-	}
+	elapsed = time.Since(start).String()
+	logger.With(log.Fields{
+		"elapsed": elapsed,
+	}).Debugf("rooted repository ready")
 
 	start = time.Now()
-	if err := r.R().FetchContext(
-		ctx, opts,
-	); err != nil && err != git.NoErrAlreadyUpToDate {
-		if err := r.Close(); err != nil {
-			logger.Warningf("couldn't close repository")
-		}
-
+	if err := FetchChanges(ctx, r, id.String(), token); err != nil {
 		return err
 	}
 
@@ -255,113 +196,5 @@ func downloadRepository(
 
 	elapsed = time.Since(start).String()
 	logger.With(log.Fields{"elapsed": elapsed}).Debugf("commited")
-	return nil
-}
-
-func createRootedRepo(
-	ctx context.Context,
-	loc borges.Location,
-	repoID borges.RepositoryID,
-	clonedFS billy.Filesystem,
-	clonedPath string,
-) (borges.Repository, error) {
-	repo, err := loc.Init(repoID)
-	if err != nil {
-		return nil, err
-	}
-
-	done := make(chan struct{})
-	go func() {
-		err = recursiveCopy(
-			"/", repo.FS(),
-			clonedPath, clonedFS,
-		)
-
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		err = ctx.Err()
-		repo.Close()
-		repo = nil
-	}
-
-	return repo, err
-}
-
-func recursiveCopy(
-	dst string,
-	dstFS billy.Filesystem,
-	src string,
-	srcFS billy.Filesystem,
-) error {
-	stat, err := srcFS.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	if stat.IsDir() {
-		err = dstFS.MkdirAll(dst, stat.Mode())
-		if err != nil {
-			return err
-		}
-
-		files, err := srcFS.ReadDir(src)
-		if err != nil {
-			return err
-		}
-
-		for _, file := range files {
-			srcPath := filepath.Join(src, file.Name())
-			dstPath := filepath.Join(dst, file.Name())
-
-			err = recursiveCopy(dstPath, dstFS, srcPath, srcFS)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		err = copyFile(dst, dstFS, src, srcFS, stat.Mode())
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func copyFile(
-	dst string,
-	dstFS billy.Filesystem,
-	src string,
-	srcFS billy.Filesystem,
-	mode os.FileMode,
-) error {
-	_, err := srcFS.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	fo, err := srcFS.Open(src)
-	if err != nil {
-		return err
-	}
-	defer fo.Close()
-
-	fd, err := dstFS.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-
-	_, err = io.Copy(fd, fo)
-	if err != nil {
-		fd.Close()
-		dstFS.Remove(dst)
-		return err
-	}
-
 	return nil
 }
