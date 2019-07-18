@@ -43,6 +43,13 @@ type DownloadCmd struct {
 func (c *DownloadCmd) Execute(args []string) error {
 	start := time.Now()
 
+	if c.Orgs == "" {
+		log.Warningf("no organizations found, at least one " +
+			"organization must be provided")
+
+		return nil
+	}
+
 	o := strings.Split(c.Orgs, ",")
 	orgs := make([]string, 0, len(o))
 	for _, org := range o {
