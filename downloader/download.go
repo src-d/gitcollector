@@ -69,7 +69,7 @@ func Download(ctx context.Context, job *library.Job) error {
 		}
 
 		err := ErrRepoAlreadyExists.New(repoID)
-		logger.Warningf(err.Error())
+		logger.Infof(err.Error())
 		return err
 	}
 
