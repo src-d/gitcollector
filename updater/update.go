@@ -163,8 +163,16 @@ func updateRepository(
 			return err
 		}
 
+		name := remote.Config().Name
 		if err == git.NoErrAlreadyUpToDate {
 			alreadyUpdated++
+			logger.With(log.Fields{"remote": name}).
+				Debugf("already up to date")
+		}
+
+		if err == nil {
+			logger.With(log.Fields{"remote": name}).
+				Debugf("updated")
 		}
 	}
 
