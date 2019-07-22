@@ -91,16 +91,17 @@ func (s *jobScheduler) Schedule() {
 						continue
 					}
 
-					select {
-					case <-s.cancel:
-						return
-					case <-time.After(s.backoff.Duration()):
-					}
 				}
 
 				if ErrJobSource.Is(err) {
 					close(s.jobs)
 					return
+				}
+
+				select {
+				case <-s.cancel:
+					return
+				case <-time.After(s.backoff.Duration()):
 				}
 
 				continue
