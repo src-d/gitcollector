@@ -7,11 +7,10 @@ import (
 
 // WorkerPoolOpts are configuration options for a JobScheduler.
 type WorkerPoolOpts struct {
-	SchedulerCapacity int
-	WaitJobTimeout    time.Duration
-	WaitNewJobTimeout time.Duration
-	NotWaitNewJobs    bool
-	Metrics           MetricsCollector
+	SchedulerCapacity  int
+	ScheduleJobTimeout time.Duration
+	NotWaitNewJobs     bool
+	Metrics            MetricsCollector
 }
 
 // WorkerPool holds a pool of workers to process Jobs.
