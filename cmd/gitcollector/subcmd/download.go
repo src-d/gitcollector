@@ -57,20 +57,25 @@ func (c *DownloadCmd) Execute(args []string) error {
 	}
 
 	info, err := os.Stat(c.LibPath)
-	check(err, "wrong path to locate the library")
+	if err != nil {
+		log.Errorf(err, "wrong path to locate the library")
+		return err
+	}
 
 	if !info.IsDir() {
-		check(
-			fmt.Errorf("%s isn't a directory", c.LibPath),
-			"wrong path to locate the library",
-		)
+		err := fmt.Errorf("%s isn't a directory", c.LibPath)
+		log.Errorf(err, "wrong path to locate the library")
+		return err
 	}
 
 	fs := osfs.New(c.LibPath)
 
 	tmpPath, err := ioutil.TempDir(
 		c.TmpPath, "gitcollector-downloader")
-	check(err, "unable to create temporal directory")
+	if err != nil {
+		log.Errorf(err, "unable to create temporal directory")
+		return err
+	}
 	defer func() {
 		if err := os.RemoveAll(tmpPath); err != nil {
 			log.Warningf(
@@ -88,7 +93,10 @@ func (c *DownloadCmd) Execute(args []string) error {
 		Transactional: true,
 		TempFS:        temp,
 	})
-	check(err, "unable to create borges siva library")
+	if err != nil {
+		log.Errorf(err, "unable to create borges siva library")
+		return err
+	}
 
 	authTokens := map[string]string{}
 	if c.Token != "" {
@@ -124,12 +132,16 @@ func (c *DownloadCmd) Execute(args []string) error {
 
 	var mc gitcollector.MetricsCollector
 	if c.MetricsDBURI != "" {
-		mc = setupMetrics(
+		mc, err = setupMetrics(
 			c.MetricsDBURI,
 			c.MetricsDBTable,
 			orgs,
 			c.MetricsSync,
 		)
+		if err != nil {
+			log.Errorf(err, "failed to setup metrics")
+			return err
+		}
 
 		log.Debugf("metrics collection activated: sync timeout %d",
 			c.MetricsSync)
@@ -158,20 +170,16 @@ func (c *DownloadCmd) Execute(args []string) error {
 	return nil
 }
 
-func check(err error, message string) {
-	if err != nil {
-		log.Errorf(err, message)
-		os.Exit(1)
-	}
-}
-
 func setupMetrics(
 	uri, table string,
 	orgs []string,
 	metricSync int64,
-) gitcollector.MetricsCollector {
+) (gitcollector.MetricsCollector, error) {
 	db, err := metrics.PrepareDB(uri, table, orgs)
-	check(err, "metrics database")
+	if err != nil {
+		log.Errorf(err, "metrics database")
+		return nil, err
+	}
 
 	mcs := make(map[string]*metrics.Collector, len(orgs))
 	for _, org := range orgs {
@@ -184,7 +192,7 @@ func setupMetrics(
 		mcs[org] = mc
 	}
 
-	return metrics.NewCollectorByOrg(mcs)
+	return metrics.NewCollectorByOrg(mcs), nil
 }
 
 func runGHOrgProviders(
