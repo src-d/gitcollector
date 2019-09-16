@@ -10,6 +10,9 @@ script:
   - GO111MODULE=on
   - make ci-script
 
+services:
+  - docker
+
 jobs:
   include:
     - os: linux
