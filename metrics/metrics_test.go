@@ -3,6 +3,8 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,4 +162,98 @@ func TestMetricsCollectorByOrg(t *testing.T) {
 	}
 
 	require.Equal(t, uint64(999), total)
+}
+
+type closeDelayCase struct {
+	name       string
+	immediate  bool
+	syncTime   time.Duration
+	delay      time.Duration
+	expCounter int
+}
+
+func TestClosesWithDelay(t *testing.T) {
+	for _, c := range []closeDelayCase{
+		{"ImmediateWithoutDelay", true, time.Second, 0, 0},
+		{"ImmediateWithDelay", true, 500 * time.Millisecond, time.Second, 1},
+		{"NonImmediateWithoutDelay", false, time.Second, 0, 1},
+		{"NonImmediateWithDelay", false, 500 * time.Millisecond, time.Second, 2},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			testCloseDelayCollector(t, c)
+		})
+	}
+}
+
+func testCloseDelayCollector(t *testing.T, c closeDelayCase) {
+	var counter int
+	mc := NewCollector(&CollectorOpts{
+		SyncTime: c.syncTime,
+		Send: func(
+			ctx context.Context,
+			mc *Collector,
+			_ *library.Job,
+		) error {
+			counter++
+			return nil
+		},
+	})
+
+	go mc.Start()
+
+	job := &library.Job{
+		Type:      library.JobDownload,
+		Endpoints: []string{"ep"},
+	}
+
+	time.Sleep(c.delay)
+
+	mc.Success(job)
+	job.Type = library.JobUpdate
+	mc.Success(job)
+	mc.Stop(c.immediate)
+
+	require.Equal(t, c.expCounter, counter)
+}
+
+func TestFailedSend(t *testing.T) {
+	for _, immediate := range []bool{false, true} {
+		t.Run("TestFailedSendImmediate"+strings.Title(strconv.FormatBool(immediate)),
+			func(t *testing.T) {
+				testFailedSend(t, immediate)
+			})
+	}
+}
+
+func testFailedSend(t *testing.T, stopImmediate bool) {
+	mc := NewCollector(&CollectorOpts{
+		SyncTime: time.Second,
+		Send: func(
+			ctx context.Context,
+			mc *Collector,
+			_ *library.Job,
+		) error {
+			return fmt.Errorf("mocked")
+		},
+	})
+
+	go mc.Start()
+
+	job := &library.Job{
+		Type:      library.JobDownload,
+		Endpoints: []string{"ep"},
+	}
+
+	mc.Success(job)
+	job.Type = library.JobUpdate
+	mc.Success(job)
+	mc.Stop(stopImmediate)
+
+	// TODO maybe we can stabilize it?
+	if stopImmediate {
+		require.True(t, mc.successUpdateCount <= 2, "expected: <= 2, got: %v", mc.successUpdateCount)
+	} else {
+		require.Equal(t, uint64(2), mc.successUpdateCount)
+	}
 }
