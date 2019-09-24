@@ -3,10 +3,18 @@ module github.com/src-d/gitcollector
 go 1.12
 
 require (
+	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
+	github.com/Microsoft/go-winio v0.4.14 // indirect
+	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
+	github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 // indirect
+	github.com/docker/go-connections v0.4.0 // indirect
+	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gliderlabs/ssh v0.2.2 // indirect
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/uuid v1.1.1
+	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
 	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7
 	github.com/kami-zh/go-capturer v0.0.0-20171211120116-e492ea43421d // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20190630040420-2e50c441276c // indirect
@@ -15,6 +23,10 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
+	github.com/opencontainers/image-spec v1.0.1 // indirect
+	github.com/opencontainers/runc v0.1.1 // indirect
+	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/src-d/envconfig v1.0.0 // indirect
 	github.com/src-d/go-borges v0.0.0-20190704083038-44867e8f2a2a
@@ -30,4 +42,5 @@ require (
 	gopkg.in/src-d/go-errors.v1 v1.0.0
 	gopkg.in/src-d/go-git.v4 v4.12.0
 	gopkg.in/src-d/go-log.v1 v1.0.2
+	gotest.tools v2.2.0+incompatible // indirect
 )
