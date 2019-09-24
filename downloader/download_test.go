@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/src-d/gitcollector/downloader/testhelper"
 	"github.com/src-d/gitcollector/library"
+	"github.com/src-d/gitcollector/testutils"
 
 	"github.com/src-d/go-borges"
 	"github.com/src-d/go-borges/siva"
@@ -89,6 +93,8 @@ var (
 		},
 	}
 
+	repoIDsFlat = getRepoIDsFlat()
+
 	testPrivateRepo = &test{
 		locID: borges.LocationID("2ea758d7c7cbc249acfd6fc4a67f926cae28c10e"),
 		repoIDs: []borges.RepositoryID{
@@ -125,6 +131,7 @@ func TestAll(t *testing.T) {
 		{"testWrongEndpointFail", testWrongEndpointFail},
 		{"testAlreadyDownloadedFail", testAlreadyDownloadedFail},
 		{"testDownloadConcurrentSuccess", testDownloadConcurrentSuccess},
+		{"testPeriodicallyBrokenGithubAPI", testPeriodicallyBrokenGithubAPI},
 	} {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
@@ -290,13 +297,103 @@ func testAlreadyDownloadedFail(t *testing.T, h *testhelper.Helper) {
 //	 <expected> error: nil
 //	 <expected> repositories ids match the initial ones
 func testDownloadConcurrentSuccess(t *testing.T, h *testhelper.Helper) {
+	errs := concurrentDownloads(h, gitProtocol)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	for _, test := range tests {
+		t.Run(string(test.locID), func(t *testing.T) {
+			loc, err := h.Lib.Location(test.locID)
+			require.NoError(t, err)
+
+			iter, err := loc.Repositories(borges.ReadOnlyMode)
+			require.NoError(t, err)
+
+			var repoIDs []borges.RepositoryID
+			require.NoError(t, iter.ForEach(func(r borges.Repository) error {
+				repoIDs = append(repoIDs, r.ID())
+				return nil
+			}))
+
+			require.ElementsMatch(t, test.repoIDs, repoIDs)
+		})
+	}
+}
+
+// testPeriodicallyBrokenGithubAPI
+// 1) set up https proxy that returns 500 response once in several requests
+// 2) start several download jobs for several orgs in parallel
+// <expected> check that part of jobs failed with corresponding error
+// <expected> check that another part of jobs was successfully downloaded
+func testPeriodicallyBrokenGithubAPI(t *testing.T, h *testhelper.Helper) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("cannot run these tests on osx")
+	}
+
+	const failEach = 5
+
+	healthyTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = healthyTransport }()
+
+	proxy, err := testutils.NewProxy(healthyTransport, &testutils.Options{
+		FailEachNthRequest: failEach,
+		FailEachNthCode:    http.StatusInternalServerError,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, proxy.Start())
+	defer func() { proxy.Stop() }()
+
+	require.NoError(t, testutils.SetTransportProxy())
+
+	errs := concurrentDownloads(h, httpsProtocol)
+	var failedCounter int
+	blackListRepoIDs := make(map[borges.RepositoryID]struct{})
+	for err := range errs {
+		if err != nil {
+			require.Contains(t, err.Error(), "Internal Server Error")
+			log.Infof("error: %q", err.Error())
+			blackListRepoIDs[getRepoIDFromErrorText(err.Error())] = struct{}{}
+			failedCounter++
+		}
+	}
+	require.True(t, failedCounter >= failEach || failedCounter < len(repoIDsFlat), "act: %v", failedCounter)
+
+	for _, test := range tests {
+		t.Run(string(test.locID), func(t *testing.T) {
+			loc, err := h.Lib.Location(test.locID)
+			require.NoError(t, err)
+
+			var expRepoIDs []borges.RepositoryID
+			for _, rid := range test.repoIDs {
+				if _, ok := blackListRepoIDs[rid]; !ok {
+					expRepoIDs = append(expRepoIDs, rid)
+				}
+			}
+
+			iter, err := loc.Repositories(borges.ReadOnlyMode)
+			require.NoError(t, err)
+
+			var actRepoIDs []borges.RepositoryID
+			require.NoError(t, iter.ForEach(func(r borges.Repository) error {
+				actRepoIDs = append(actRepoIDs, r.ID())
+				return nil
+			}))
+
+			require.ElementsMatch(t, expRepoIDs, actRepoIDs)
+		})
+	}
+}
+
+func concurrentDownloads(h *testhelper.Helper, p protocol) chan error {
 	var jobs []*library.Job
 	for _, test := range tests {
 		for _, id := range test.repoIDs {
 			job := &library.Job{
 				Lib:       h.Lib,
 				Type:      library.JobDownload,
-				Endpoints: []string{endPoint(gitProtocol, id)},
+				Endpoints: []string{endPoint(p, id)},
 				TempFS:    h.TempFS,
 				AuthToken: func(string) string { return "" },
 				Logger:    log.New(nil),
@@ -322,27 +419,7 @@ func testDownloadConcurrentSuccess(t *testing.T, h *testhelper.Helper) {
 	wg.Wait()
 	close(errs)
 
-	for err := range errs {
-		require.NoError(t, err)
-	}
-
-	for _, test := range tests {
-		t.Run(string(test.locID), func(t *testing.T) {
-			loc, err := h.Lib.Location(test.locID)
-			require.NoError(t, err)
-
-			iter, err := loc.Repositories(borges.ReadOnlyMode)
-			require.NoError(t, err)
-
-			var repoIDs []borges.RepositoryID
-			require.NoError(t, iter.ForEach(func(r borges.Repository) error {
-				repoIDs = append(repoIDs, r.ID())
-				return nil
-			}))
-
-			require.ElementsMatch(t, test.repoIDs, repoIDs)
-		})
-	}
+	return errs
 }
 
 // newLibrary is a wrapper around siva.NewLibrary
@@ -355,5 +432,27 @@ func newLibrary(fs billy.Filesystem) (*siva.Library, error) {
 
 func endPoint(p protocol, repoID interface{}) string {
 	return fmt.Sprintf("%s://%s.git", p, repoID)
-	//return fmt.Sprintf("git://%s.git", repoID)
+}
+
+func getRepoIDsFlat() (res []borges.RepositoryID) {
+	for _, test := range tests {
+		for _, rid := range test.repoIDs {
+			res = append(res, rid)
+		}
+	}
+	return
+}
+
+func getRepoIDFromErrorText(text string) borges.RepositoryID {
+	return borges.RepositoryID(getStringInBetween(text, "https://", ".git"))
+}
+
+func getStringInBetween(str string, start string, end string) (result string) {
+	s := strings.Index(str, start)
+	if s == -1 {
+		return
+	}
+	s += len(start)
+	e := strings.Index(str, end)
+	return str[s:e]
 }
