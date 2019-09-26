@@ -7,7 +7,7 @@ import (
 	"github.com/src-d/gitcollector/discovery"
 	"github.com/src-d/gitcollector/library"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v28/github"
 )
 
 // NewGitHubOrg builds a new gitcollector.Provider

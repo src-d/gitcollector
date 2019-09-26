@@ -11,8 +11,7 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gliderlabs/ssh v0.2.2 // indirect
-	github.com/google/go-github v17.0.0+incompatible
-	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/google/go-github/v28 v28.1.1
 	github.com/google/uuid v1.1.1
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
 	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7

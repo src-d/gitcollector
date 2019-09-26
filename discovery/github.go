@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
-	"gopkg.in/src-d/go-errors.v1"
-
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v28/github"
 	"github.com/jpillora/backoff"
+	"gopkg.in/src-d/go-errors.v1"
 )
 
 var (
