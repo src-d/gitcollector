@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 
@@ -59,9 +58,6 @@ type Proxy struct {
 	mu        sync.Mutex
 	server    *http.Server
 	transport http.RoundTripper
-	// pemPath and keyPath are paths to certs that required by https server
-	pemPath string
-	keyPath string
 	// options for mock ups
 	options *Options
 	// FailEachNthRequestCounter is a counter required for failing condition on each nth request
@@ -88,19 +84,15 @@ type Options struct {
 	FailThreshold int
 	// FailThresholdCode defines the status code to be returned after threshold overcome
 	FailThresholdCode int
+	// pemPath and keyPath are paths to certs that required by https server
+	PemPath string
+	KeyPath string
 }
 
 // NewProxy is a proxy constructor
 func NewProxy(transport http.RoundTripper, options *Options) (*Proxy, error) {
-	pemPath, keyPath := os.Getenv("PEM_PATH"), os.Getenv("KEY_PATH")
-	if pemPath == "" || keyPath == "" {
-		return nil, fmt.Errorf("certs are not set")
-	}
-
 	processOptions(options)
 	proxy := &Proxy{
-		pemPath:   pemPath,
-		keyPath:   keyPath,
 		transport: transport,
 		options:   options,
 		server: &http.Server{
@@ -127,7 +119,7 @@ func (p *Proxy) initHandler() {
 // Start starts proxy server
 func (p *Proxy) Start() error {
 	go func() {
-		if err := p.server.ListenAndServeTLS(p.pemPath, p.keyPath); err != nil {
+		if err := p.server.ListenAndServeTLS(p.options.PemPath, p.options.KeyPath); err != nil {
 			if err != http.ErrServerClosed {
 				log.Errorf(err, "https server failed")
 			}
@@ -164,7 +156,8 @@ func SetTransportProxy() error {
 	http.DefaultTransport = &http.Transport{
 		Proxy: http.ProxyURL(u),
 		// Disable HTTP/2.
-		TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		TLSNextProto:    make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
 	return nil

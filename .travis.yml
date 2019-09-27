@@ -9,21 +9,15 @@ matrix:
 services:
   - docker
 
-env:
-  - PEM_PATH="/tmp/tls.crt" KEY_PATH="/tmp/tls.key"
+script:
+  - GO111MODULE=on
+  - make ci-script
 
 jobs:
   include:
     - os: linux
       sudo: required
       dist: xenial
-
-      script:
-        - ./generate-certs.sh
-        - sudo cp ${PEM_PATH} /usr/local/share/ca-certificates/
-        - sudo update-ca-certificates
-        - GO111MODULE=on
-        - make ci-script
 
       before_deploy:
       - make packages
@@ -42,10 +36,6 @@ jobs:
 
     - os: osx
       osx_image: xcode10.2
-
-      script:
-        - GO111MODULE=on
-        - make ci-script
 
       before_deploy:
       - make packages

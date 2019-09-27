@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -172,16 +171,18 @@ func TestProxyMockUps(t *testing.T) {
 }
 
 func testProxyMockUp(t *testing.T, code int, errContains string) {
-	if runtime.GOOS == "darwin" {
-		t.Skip("cannot run these tests on osx")
-	}
-
 	const org = "bblfsh"
 
 	healthyTransport := http.DefaultTransport
 	defer func() { http.DefaultTransport = healthyTransport }()
 
-	proxy, err := testutils.NewProxy(healthyTransport, &testutils.Options{Code: code})
+	proxy, err := testutils.NewProxy(
+		healthyTransport,
+		&testutils.Options{
+			Code:    code,
+			KeyPath: "../_testdata/server.key",
+			PemPath: "../_testdata/server.pem",
+		})
 	require.NoError(t, err)
 
 	require.NoError(t, proxy.Start())

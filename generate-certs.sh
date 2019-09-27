@@ -7,9 +7,9 @@ openssl req \
     -newkey rsa:2048 \
     -x509 \
     -nodes \
-    -keyout ${KEY_PATH} \
+    -keyout _testdata/server.key \
     -new \
-    -out ${PEM_PATH} \
+    -out _testdata/server.crt \
     -subj /CN=localhost \
     -reqexts SAN \
     -extensions SAN \

@@ -336,10 +336,14 @@ func testPeriodicallyBrokenGithubAPI(t *testing.T, h *testhelper.Helper) {
 	healthyTransport := http.DefaultTransport
 	defer func() { http.DefaultTransport = healthyTransport }()
 
-	proxy, err := testutils.NewProxy(healthyTransport, &testutils.Options{
-		FailEachNthRequest: failEach,
-		FailEachNthCode:    http.StatusInternalServerError,
-	})
+	proxy, err := testutils.NewProxy(
+		healthyTransport,
+		&testutils.Options{
+			FailEachNthRequest: failEach,
+			FailEachNthCode:    http.StatusInternalServerError,
+			KeyPath:            "../_testdata/server.key",
+			PemPath:            "../_testdata/server.pem",
+		})
 	require.NoError(t, err)
 
 	require.NoError(t, proxy.Start())
