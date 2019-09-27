@@ -6,12 +6,12 @@ go_import_path: github.com/src-d/gitcollector
 matrix:
   fast_finish: true
 
+services:
+  - docker
+
 script:
   - GO111MODULE=on
   - make ci-script
-
-services:
-  - docker
 
 jobs:
   include:
