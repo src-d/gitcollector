@@ -1,0 +1,3 @@
+# TODO(@lwsanty): change to repos from infra #1130
+# regression config represents the array of lists of github organizations
+- bblfsh,git-fixtures
