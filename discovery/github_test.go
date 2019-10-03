@@ -40,7 +40,7 @@ func TestGitHub(t *testing.T) {
 
 	discovery := NewGitHub(
 		advertiseRepos,
-		NewGHOrgReposIter(org, &GHReposIterOpts{
+		NewGHOrgReposIter(org, []string{}, &GHReposIterOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 100,
 			AuthToken:      token,
@@ -112,7 +112,7 @@ func TestGitHubSkipForks(t *testing.T) {
 
 	discovery := NewGitHub(
 		advertiseRepos,
-		NewGHOrgReposIter(org, &GHReposIterOpts{
+		NewGHOrgReposIter(org, []string{}, &GHReposIterOpts{
 			AuthToken: token,
 		}),
 		&GitHubOpts{
@@ -140,6 +140,79 @@ func TestGitHubSkipForks(t *testing.T) {
 		for _, forked := range forkedRepos {
 			req.False(strings.Contains(ep, forked))
 		}
+	}
+}
+
+func TestExcludeRepos(t *testing.T) {
+	var req = require.New(t)
+
+	const (
+		org        = "src-d"
+		timeToStop = 5 * time.Second
+	)
+
+	token, _ := getToken()
+	queue := make(chan *github.Repository, 50)
+	advertiseRepos := func(
+		_ context.Context,
+		repos []*github.Repository,
+	) error {
+		for _, repo := range repos {
+			queue <- repo
+		}
+
+		return nil
+	}
+
+	discovery := NewGitHub(
+		advertiseRepos,
+		NewGHOrgReposIter(org, []string{"gitcollector"}, &GHReposIterOpts{
+			TimeNewRepos:   1 * time.Second,
+			ResultsPerPage: 100,
+			AuthToken:      token,
+		}),
+		&GitHubOpts{
+			MaxJobBuffer: 50,
+		},
+	)
+
+	var (
+		consumedRepos = make(chan *github.Repository, 200)
+		stop          bool
+		done          = make(chan struct{})
+	)
+
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for !stop {
+			select {
+			case repo, ok := <-queue:
+				if !ok {
+					return
+				}
+
+				select {
+				case consumedRepos <- repo:
+				case <-time.After(timeToStop):
+					stop = true
+				}
+			}
+		}
+	}()
+
+	err := discovery.Start()
+	req.True(ErrDiscoveryStopped.Is(err))
+
+	close(queue)
+	<-done
+	req.False(stop)
+	close(consumedRepos)
+
+	for repo := range consumedRepos {
+		ep, err := GetGHEndpoint(repo)
+		req.NoError(err)
+		req.True(strings.Contains(ep, org))
+		req.NotEqual("gitcollector", *repo.Name)
 	}
 }
 
@@ -206,7 +279,7 @@ func testProxyMockUp(t *testing.T, code int, errContains string) {
 
 	discovery := NewGitHub(
 		advertiseRepos,
-		NewGHOrgReposIter(org, &GHReposIterOpts{
+		NewGHOrgReposIter(org, []string{}, &GHReposIterOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 100,
 			AuthToken:      token,
@@ -272,7 +345,7 @@ func testAdvertise(t *testing.T, ac advertiseCase) {
 
 	discovery := NewGitHub(
 		advertiseRepos,
-		NewGHOrgReposIter(org, &GHReposIterOpts{
+		NewGHOrgReposIter(org, []string{}, &GHReposIterOpts{
 			TimeNewRepos:   1 * time.Second,
 			ResultsPerPage: 100,
 			AuthToken:      token,

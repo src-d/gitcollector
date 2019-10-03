@@ -33,6 +33,7 @@ type DownloadCmd struct {
 	NotAllowUpdates bool   `long:"no-updates" description:"don't allow updates on already downloaded repositories" env:"GITCOLLECTOR_NO_UPDATES"`
 	NoForks         bool   `long:"no-forks" description:"github forked repositories will not be downloaded" env:"GITCOLLECTOR_NO_FORKS"`
 	Orgs            string `long:"orgs" env:"GITHUB_ORGANIZATIONS" description:"list of github organization names separated by comma" required:"true"`
+	ExcludedRepos   string `long:"excluded-repos" env:"GITCOLLECTOR_EXCLUDED_REPOS" description:"list of repos to exclude separated by comma" required:"false"`
 	Token           string `long:"token" env:"GITHUB_TOKEN" description:"github token"`
 	MetricsDBURI    string `long:"metrics-db" env:"GITCOLLECTOR_METRICS_DB_URI" description:"uri to a database where metrics will be sent"`
 	MetricsDBTable  string `long:"metrics-db-table" env:"GITCOLLECTOR_METRICS_DB_TABLE" default:"gitcollector_metrics" description:"table name where the metrics will be added"`
@@ -54,6 +55,12 @@ func (c *DownloadCmd) Execute(args []string) error {
 	orgs := make([]string, 0, len(o))
 	for _, org := range o {
 		orgs = append(orgs, strings.ToLower(org))
+	}
+
+	ers := strings.Split(c.ExcludedRepos, ",")
+	excludedRepos := make([]string, 0, len(ers))
+	for _, er := range ers {
+		excludedRepos = append(excludedRepos, er)
 	}
 
 	info, err := os.Stat(c.LibPath)
@@ -160,7 +167,7 @@ func (c *DownloadCmd) Execute(args []string) error {
 	wp.Run()
 	log.Debugf("worker pool is running")
 
-	go runGHOrgProviders(log.New(nil), orgs, c.Token, download, c.NoForks)
+	go runGHOrgProviders(log.New(nil), orgs, excludedRepos, c.Token, download, c.NoForks)
 
 	wp.Wait()
 	log.Debugf("worker pool stopped successfully")
@@ -198,6 +205,7 @@ func setupMetrics(
 func runGHOrgProviders(
 	logger log.Logger,
 	orgs []string,
+	excludedRepos []string,
 	token string,
 	download chan gitcollector.Job,
 	skipForks bool,
@@ -208,6 +216,7 @@ func runGHOrgProviders(
 		org := o
 		p := provider.NewGitHubOrg(
 			org,
+			excludedRepos,
 			token,
 			download,
 			&discovery.GitHubOpts{

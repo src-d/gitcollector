@@ -22,6 +22,7 @@ func TestGitHub(t *testing.T) {
 	queue := make(chan gitcollector.Job, 50)
 	provider := NewGitHubOrg(
 		org,
+		[]string{},
 		"",
 		queue,
 		&discovery.GitHubOpts{

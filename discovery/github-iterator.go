@@ -30,18 +30,19 @@ const (
 
 // GHOrgReposIter is a GHRepositoriesIter by organization name.
 type GHOrgReposIter struct {
-	org          string
-	client       *github.Client
-	repos        []*github.Repository
-	checkpoint   int
-	opts         *github.RepositoryListByOrgOptions
-	waitNewRepos time.Duration
+	org           string
+	excludedRepos map[string]struct{}
+	client        *github.Client
+	repos         []*github.Repository
+	checkpoint    int
+	opts          *github.RepositoryListByOrgOptions
+	waitNewRepos  time.Duration
 }
 
 var _ GHRepositoriesIter = (*GHOrgReposIter)(nil)
 
 // NewGHOrgReposIter builds a new GHOrgReposIter.
-func NewGHOrgReposIter(org string, opts *GHReposIterOpts) *GHOrgReposIter {
+func NewGHOrgReposIter(org string, excludedRepos []string, opts *GHReposIterOpts) *GHOrgReposIter {
 	if opts == nil {
 		opts = &GHReposIterOpts{}
 	}
@@ -61,9 +62,15 @@ func NewGHOrgReposIter(org string, opts *GHReposIterOpts) *GHOrgReposIter {
 		wnr = waitNewRepos
 	}
 
+	excludedReposSet := make(map[string]struct{})
+	for _, excludedRepo := range excludedRepos {
+		excludedReposSet[excludedRepo] = struct{}{}
+	}
+
 	return &GHOrgReposIter{
-		org:    org,
-		client: newGithubClient(opts.AuthToken, to),
+		org:           org,
+		excludedRepos: excludedReposSet,
+		client:        newGithubClient(opts.AuthToken, to),
 		opts: &github.RepositoryListByOrgOptions{
 			ListOptions: github.ListOptions{PerPage: rpp},
 		},
@@ -92,16 +99,20 @@ func newGithubClient(token string, timeout time.Duration) *github.Client {
 func (p *GHOrgReposIter) Next(
 	ctx context.Context,
 ) (*github.Repository, time.Duration, error) {
-	if len(p.repos) == 0 {
-		retry, err := p.requestRepos(ctx)
-		if err != nil && len(p.repos) == 0 {
-			return nil, retry, err
+	for {
+		if len(p.repos) == 0 {
+			retry, err := p.requestRepos(ctx)
+			if err != nil && len(p.repos) == 0 {
+				return nil, retry, err
+			}
+		}
+
+		var next *github.Repository
+		next, p.repos = p.repos[0], p.repos[1:]
+		if _, ok := p.excludedRepos[next.GetName()]; !ok {
+			return next, 0, nil
 		}
 	}
-
-	var next *github.Repository
-	next, p.repos = p.repos[0], p.repos[1:]
-	return next, 0, nil
 }
 
 func (p *GHOrgReposIter) requestRepos(
