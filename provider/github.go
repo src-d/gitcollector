@@ -14,13 +14,14 @@ import (
 // based on a discovery.Github.
 func NewGitHubOrg(
 	org string,
+	excludedRepos []string,
 	authToken string,
 	queue chan<- gitcollector.Job,
 	opts *discovery.GitHubOpts,
 ) *discovery.GitHub {
 	return discovery.NewGitHub(
 		AdvertiseGHRepositoriesOnJobQueue(queue),
-		discovery.NewGHOrgReposIter(org, &discovery.GHReposIterOpts{
+		discovery.NewGHOrgReposIter(org, excludedRepos, &discovery.GHReposIterOpts{
 			AuthToken: authToken,
 		}),
 		opts,

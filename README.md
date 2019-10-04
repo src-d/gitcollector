@@ -47,6 +47,7 @@ Help Options:
           --no-updates                           don't allow updates on already downloaded repositories [$GITCOLLECTOR_NO_UPDATES]
           --no-forks                             github forked repositories will not be downloaded [$GITCOLLECTOR_NO_FORKS]
           --orgs=                                list of github organization names separated by comma [$GITHUB_ORGANIZATIONS]
+          --excluded-repos=                      list of repos to exclude separated by comma [$GITCOLLECTOR_EXCLUDED_REPOS]
           --token=                               github token [$GITHUB_TOKEN]
           --metrics-db=                          uri to a database where metrics will be sent [$GITCOLLECTOR_METRICS_DB_URI]
           --metrics-db-table=                    table name where the metrics will be added (default: gitcollector_metrics) [$GITCOLLECTOR_METRICS_DB_TABLE]
