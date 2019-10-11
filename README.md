@@ -79,7 +79,7 @@ docker run --rm --name gitcollector_1 \
 -e "GITHUB_ORGANIZATIONS=src-d,bblfsh" \
 -e "GITHUB_TOKEN=foo" \
 -v /path/to/repos/directory:/library \
-gitcollector:latest
+srcd/gitcollector:latest
 ```
 
 Note that you must mount a local directory into the specific container path shown in `-v /path/to/repos/directory:/library`. This directory is where the repositories will be downloaded into rooted repositories in siva files format.
