@@ -22,6 +22,10 @@ jobs:
 
     - name: Test
       run: |
-        make ci-script
+        make test-coverage
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload coverage
+      run: |
+        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_TOKEN }} -f coverage.txt
