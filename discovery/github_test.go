@@ -25,7 +25,11 @@ func TestGitHub(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	token, _ := getToken()
+	token, err := getToken()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
 	queue := make(chan *github.Repository, 50)
 	advertiseRepos := func(
 		_ context.Context,
@@ -74,7 +78,7 @@ func TestGitHub(t *testing.T) {
 		}
 	}()
 
-	err := discovery.Start()
+	err = discovery.Start()
 	req.True(ErrDiscoveryStopped.Is(err))
 
 	close(queue)
@@ -151,7 +155,11 @@ func TestExcludeRepos(t *testing.T) {
 		timeToStop = 5 * time.Second
 	)
 
-	token, _ := getToken()
+	token, err := getToken()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
 	queue := make(chan *github.Repository, 50)
 	advertiseRepos := func(
 		_ context.Context,
@@ -200,7 +208,7 @@ func TestExcludeRepos(t *testing.T) {
 		}
 	}()
 
-	err := discovery.Start()
+	err = discovery.Start()
 	req.True(ErrDiscoveryStopped.Is(err))
 
 	close(queue)
@@ -246,6 +254,11 @@ func TestProxyMockUps(t *testing.T) {
 func testProxyMockUp(t *testing.T, code int, errContains string) {
 	const org = "bblfsh"
 
+	token, err := getToken()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
 	healthyTransport := http.DefaultTransport
 	defer func() { http.DefaultTransport = healthyTransport }()
 
@@ -263,7 +276,6 @@ func testProxyMockUp(t *testing.T, code int, errContains string) {
 
 	require.NoError(t, testutils.SetTransportProxy())
 
-	token, _ := getToken()
 	queue := make(chan *github.Repository, 50)
 	advertiseRepos := func(
 		_ context.Context,
@@ -322,7 +334,11 @@ func TestAdvertiseErrors(t *testing.T) {
 func testAdvertise(t *testing.T, ac advertiseCase) {
 	const org = "bblfsh"
 
-	token, _ := getToken()
+	token, err := getToken()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
 	queue := make(chan *github.Repository, 50)
 	advertiseRepos := func(
 		ctx context.Context,
@@ -356,7 +372,7 @@ func testAdvertise(t *testing.T, ac advertiseCase) {
 		},
 	)
 
-	err := discovery.Start()
+	err = discovery.Start()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), ac.errContains)
 }

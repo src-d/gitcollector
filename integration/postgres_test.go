@@ -2,6 +2,7 @@ package integration
 
 import (
 	"database/sql"
+	"os"
 	"runtime"
 	"testing"
 
@@ -39,6 +40,10 @@ func TestPostgres(t *testing.T) {
 	// docker service is not supported on osx https://github.com/travis-ci/travis-ci/issues/5738#issuecomment-227154200
 	if runtime.GOOS == "darwin" {
 		t.Skip("cannot run these tests on osx")
+	}
+
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		t.Skip("github token not defined")
 	}
 
 	h, err := NewHelper(orgs)
