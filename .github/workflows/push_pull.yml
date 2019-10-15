@@ -23,9 +23,11 @@ jobs:
     - name: Test
       run: |
         make test-coverage
+        cp coverage.txt coverage.out
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload coverage
-      run: |
-        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_TOKEN }} -f coverage.txt
+    - name: Coveralls
+      uses: coverallsapp/github-action@master
+      with:
+        github-token: ${{ secrets.github_token }}
