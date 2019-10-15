@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
@@ -77,7 +78,12 @@ func testBrokenPostgresEndpoint(t *testing.T, h *helper) {
 
 	err := h.Exec()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no such host")
+
+	if strings.Contains(err.Error(), "lookup broken") {
+		require.Contains(t, err.Error(), "lookup broken")
+	} else {
+		require.Contains(t, err.Error(), "no such host")
+	}
 }
 
 func testPostgresCreateSchemaFail(t *testing.T, h *helper) {
