@@ -10,7 +10,7 @@ services:
   - docker
 
 script:
-  - make ci-script
+  - make test
 
 jobs:
   include:
