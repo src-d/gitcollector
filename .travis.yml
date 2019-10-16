@@ -1,6 +1,6 @@
 language: go
 
-go: 1.12.x
+go: 1.13.x
 go_import_path: github.com/src-d/gitcollector
 
 matrix:
@@ -10,8 +10,7 @@ services:
   - docker
 
 script:
-  - GO111MODULE=on
-  - make ci-script
+  - make test
 
 jobs:
   include:
@@ -30,7 +29,7 @@ jobs:
         skip_cleanup: true
         on:
           tags: true
-      
+
       after_deploy:
         - make docker-push-latest-release
 

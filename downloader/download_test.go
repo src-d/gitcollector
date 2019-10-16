@@ -356,7 +356,11 @@ func testPeriodicallyBrokenGithubAPI(t *testing.T, h *testhelper.Helper) {
 	blackListRepoIDs := make(map[borges.RepositoryID]struct{})
 	for err := range errs {
 		if err != nil {
-			require.Contains(t, err.Error(), "Internal Server Error")
+			if strings.Contains(err.Error(), "EOF") {
+				require.Contains(t, err.Error(), "EOF")
+			} else {
+				require.Contains(t, err.Error(), "Internal Server Error")
+			}
 			log.Infof("error: %q", err.Error())
 			blackListRepoIDs[getRepoIDFromErrorText(err.Error())] = struct{}{}
 			failedCounter++

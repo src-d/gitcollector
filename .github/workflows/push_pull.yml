@@ -1,0 +1,35 @@
+name: Go
+on: [push, pull_request]
+jobs:
+
+  build:
+    name: Test on go ${{ matrix.go_version }} and ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        go_version: [1.13]
+        os: [ubuntu-latest, macOS-latest]
+
+    steps:
+    - name: Set up Go ${{ matrix.go_version }}
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ matrix.go_version }}
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v1
+
+    - name: Test
+      run: |
+        make test-coverage
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload coverage
+      run: |
+        os=os_$(echo ${{ matrix.os }} | tr '[:punct:]' '_')
+        go=go_$(echo ${{ matrix.go_version }} | tr '[:punct:]' '_')
+        bash <(curl -s https://codecov.io/bash) -f coverage.txt -cF $os,$go
+      env:
+        CODECOV_TOKEN: be731f61-6ca9-42b0-8f1a-59f4a0b28c0d
