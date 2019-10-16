@@ -28,4 +28,8 @@ jobs:
 
     - name: Upload coverage
       run: |
-        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_TOKEN }} -f coverage.txt
+        os=os_$(echo ${{ matrix.os }} | tr '[:punct:]' '_')
+        go=go_$(echo ${{ matrix.go_version }} | tr '[:punct:]' '_')
+        bash <(curl -s https://codecov.io/bash) -f coverage.txt -cF $os,$go
+      env:
+        CODECOV_TOKEN: be731f61-6ca9-42b0-8f1a-59f4a0b28c0d
