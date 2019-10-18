@@ -66,7 +66,7 @@ func TestGitHub(t *testing.T) {
 		job, ok := j.(*library.Job)
 		req.True(ok)
 		req.True(job.Type == library.JobDownload)
-		req.Len(job.Endpoints, 1)
-		req.True(strings.Contains(job.Endpoints[0], org))
+		req.Len(job.Endpoints(), 1)
+		req.True(strings.Contains(job.Endpoints()[0], org))
 	}
 }

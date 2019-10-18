@@ -75,7 +75,7 @@ func TestUpdate(t *testing.T) {
 	req.True(os.IsNotExist(err))
 
 	job.Lib = lib2
-	job.Endpoints = []string{endpoints[1]}
+	job.SetEndpoints([]string{endpoints[1]})
 
 	// Update just one remote
 	req.NoError(Update(context.TODO(), job))

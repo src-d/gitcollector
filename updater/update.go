@@ -56,9 +56,9 @@ func Update(ctx context.Context, job *library.Job) error {
 	}
 
 	var remote string
-	if len(job.Endpoints) == 1 {
+	if len(job.Endpoints()) == 1 {
 		// job redirected from download
-		ep := job.Endpoints[0]
+		ep := job.Endpoints()[0]
 
 		logger = logger.New(log.Fields{"url": ep})
 
@@ -77,7 +77,7 @@ func Update(ctx context.Context, job *library.Job) error {
 		return err
 	}
 
-	if len(job.Endpoints) == 0 {
+	if len(job.Endpoints()) == 0 {
 		// it will update the whole location, add all the endpoints
 		// to be updated to the job
 		var endpoints []string
@@ -85,7 +85,7 @@ func Update(ctx context.Context, job *library.Job) error {
 			endpoints = append(endpoints, remote.Config().URLs[0])
 		}
 
-		job.Endpoints = endpoints
+		job.SetEndpoints(endpoints)
 	}
 
 	logger.Infof("started")

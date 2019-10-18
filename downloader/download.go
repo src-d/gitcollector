@@ -31,7 +31,7 @@ var (
 func Download(ctx context.Context, job *library.Job) error {
 	logger := job.Logger.New(log.Fields{"job": "download", "id": job.ID})
 	if job.Type != library.JobDownload ||
-		len(job.Endpoints) == 0 ||
+		len(job.Endpoints()) == 0 ||
 		job.Lib == nil ||
 		job.TempFS == nil {
 		err := ErrNotDownloadJob.New()
@@ -46,7 +46,7 @@ func Download(ctx context.Context, job *library.Job) error {
 		return err
 	}
 
-	endpoint := job.Endpoints[0]
+	endpoint := job.Endpoints()[0]
 	logger = logger.New(log.Fields{"url": endpoint})
 
 	repoID, err := library.NewRepositoryID(endpoint)
@@ -113,8 +113,7 @@ func libHas(
 	select {
 	case <-done:
 	case <-ctx.Done():
-		ok = false
-		err = ctx.Err()
+		return false, "", ctx.Err()
 	}
 
 	return ok, locID, err

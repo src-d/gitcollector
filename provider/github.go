@@ -42,9 +42,9 @@ func AdvertiseGHRepositoriesOnJobQueue(
 			}
 
 			job := &library.Job{
-				Type:      library.JobDownload,
-				Endpoints: []string{endpoint},
+				Type: library.JobDownload,
 			}
+			job.SetEndpoints([]string{endpoint})
 
 			select {
 			case queue <- job:

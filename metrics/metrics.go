@@ -225,11 +225,11 @@ func (c *Collector) modifyMetrics(job *library.Job, kind int) error {
 			break
 		}
 
-		for range job.Endpoints {
+		for range job.Endpoints() {
 			c.successUpdateCount++
 		}
 	case failKind:
-		for range job.Endpoints {
+		for range job.Endpoints() {
 			c.failCount++
 		}
 	case discoverKind:
@@ -351,16 +351,16 @@ func (c *CollectorByOrg) Discover(job gitcollector.Job) {
 func triageJob(job gitcollector.Job) map[string]*library.Job {
 	organizations := map[string]*library.Job{}
 	lj, _ := job.(*library.Job)
-	for _, ep := range lj.Endpoints {
+	for _, ep := range lj.Endpoints() {
 		org := library.GetOrgFromEndpoint(ep)
 		j, ok := organizations[org]
 		if !ok {
 			j = &(*lj)
-			j.Endpoints = []string{}
+			j.SetEndpoints([]string{})
 			organizations[org] = j
 		}
 
-		j.Endpoints = append(j.Endpoints, ep)
+		j.SetEndpoints(append(j.Endpoints(), ep))
 	}
 
 	return organizations
