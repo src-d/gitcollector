@@ -16,7 +16,7 @@ jobs:
   include:
     - os: linux
       sudo: required
-      dist: xenial
+      dist: bionic
 
       before_deploy:
       - make packages
