@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"sync"
 
 	"github.com/src-d/gitcollector"
 	"github.com/src-d/go-borges"
@@ -31,10 +32,11 @@ const (
 
 // Job represents a gitcollector.Job to perform a task on a borges.Library.
 type Job struct {
+	mu          sync.Mutex
+	endpoints   []string
 	ID          string
 	Type        JobType
 	Lib         borges.Library
-	Endpoints   []string
 	TempFS      billy.Filesystem
 	LocationID  borges.LocationID
 	AllowUpdate bool
@@ -47,6 +49,21 @@ var _ gitcollector.Job = (*Job)(nil)
 
 // JobFn represents the task to be performed by a Job.
 type JobFn func(context.Context, *Job) error
+
+// TODO: we should probably secure other fiels
+func (j *Job) SetEndpoints(endpoints []string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	j.endpoints = endpoints
+}
+
+func (j *Job) Endpoints() []string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	return j.endpoints
+}
 
 // Process implements the Job interface.
 func (j *Job) Process(ctx context.Context) error {

@@ -33,3 +33,11 @@ jobs:
         bash <(curl -s https://codecov.io/bash) -f coverage.txt -cF $os,$go
       env:
         CODECOV_TOKEN: be731f61-6ca9-42b0-8f1a-59f4a0b28c0d
+
+    - name: Test races
+      run: |
+        make test-race
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+

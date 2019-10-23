@@ -39,13 +39,12 @@ func TestMetricsCollectorBatch(t *testing.T) {
 
 	var countOne, countThree int
 	for i := 0; i < 1000; i++ {
-		job := &library.Job{
-			Endpoints: []string{
-				fmt.Sprintf("ep-%d-1", i),
-				fmt.Sprintf("ep-%d-2", i),
-				fmt.Sprintf("ep-%d-3", i),
-			},
-		}
+		job := &library.Job{}
+		job.SetEndpoints([]string{
+			fmt.Sprintf("ep-%d-1", i),
+			fmt.Sprintf("ep-%d-2", i),
+			fmt.Sprintf("ep-%d-3", i),
+		})
 
 		switch i % 5 {
 		case 0:
@@ -101,9 +100,9 @@ func TestMetricsCollectorTime(t *testing.T) {
 				return
 			default:
 				job := &library.Job{
-					Type:      library.JobDownload,
-					Endpoints: []string{"foo-ep"},
+					Type: library.JobDownload,
 				}
+				job.SetEndpoints([]string{"foo-ep"})
 
 				mc.Success(job)
 				time.Sleep(100 * time.Millisecond)
@@ -128,9 +127,8 @@ func TestMetricsCollectorByOrg(t *testing.T) {
 	const url = "https://github.com/%s/foo-%d"
 	for i := 0; i < 999; i++ {
 		ep := fmt.Sprintf(url, orgs[i%len(orgs)], i)
-		job := &library.Job{
-			Endpoints: []string{ep},
-		}
+		job := &library.Job{}
+		job.SetEndpoints([]string{ep})
 
 		switch i % 5 {
 		case 0:
@@ -201,17 +199,10 @@ func testCloseDelayCollector(t *testing.T, c closeDelayCase) {
 	})
 
 	go mc.Start()
-
-	job := &library.Job{
-		Type:      library.JobDownload,
-		Endpoints: []string{"ep"},
-	}
-
 	time.Sleep(c.delay)
 
-	mc.Success(job)
-	job.Type = library.JobUpdate
-	mc.Success(job)
+	mc.Success(getJob(library.JobDownload))
+	mc.Success(getJob(library.JobUpdate))
 	mc.Stop(c.immediate)
 
 	require.Equal(t, c.expCounter, counter)
@@ -240,20 +231,24 @@ func testFailedSend(t *testing.T, stopImmediate bool) {
 
 	go mc.Start()
 
-	job := &library.Job{
-		Type:      library.JobDownload,
-		Endpoints: []string{"ep"},
-	}
-
-	mc.Success(job)
-	job.Type = library.JobUpdate
-	mc.Success(job)
+	mc.Success(getJob(library.JobDownload))
+	mc.Success(getJob(library.JobUpdate))
 	mc.Stop(stopImmediate)
 
 	// TODO maybe we can stabilize it?
 	if stopImmediate {
-		require.True(t, mc.successUpdateCount <= 2, "expected: <= 2, got: %v", mc.successUpdateCount)
+		require.LessOrEqual(t, mc.successDownloadCount, uint64(1))
+		require.LessOrEqual(t, mc.successUpdateCount, uint64(1))
 	} else {
-		require.Equal(t, uint64(2), mc.successUpdateCount)
+		require.Equal(t, uint64(1), mc.successDownloadCount)
+		require.Equal(t, uint64(1), mc.successUpdateCount)
 	}
+}
+
+func getJob(jobType int) *library.Job {
+	job := &library.Job{
+		Type: library.JobType(jobType),
+	}
+	job.SetEndpoints([]string{"ep"})
+	return job
 }

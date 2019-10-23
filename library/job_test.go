@@ -22,7 +22,7 @@ func TestJobScheduleFn(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			got = append(got, j.Endpoints[0])
+			got = append(got, j.Endpoints()[0])
 			return nil
 		}
 	)
@@ -56,7 +56,7 @@ func TestDownloadJobScheduleFn(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			got = append(got, j.Endpoints[0])
+			got = append(got, j.Endpoints()[0])
 			return nil
 		}
 	)
@@ -89,7 +89,7 @@ func TestUpdateJobScheduleFn(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			got = append(got, j.Endpoints[0])
+			got = append(got, j.Endpoints()[0])
 			return nil
 		}
 	)
@@ -127,7 +127,7 @@ func testScheduleFn(
 
 			queue <- &Job{
 				Type:      t,
-				Endpoints: []string{e},
+				endpoints: []string{e},
 			}
 		}
 	}

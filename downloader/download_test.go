@@ -171,15 +171,16 @@ func testFSWithErrors(t *testing.T, h *testhelper.Helper, fsOpts testhelper.Brok
 	require.NoError(t, err)
 
 	testRepo := tests[0].repoIDs[0]
-	err = Download(context.Background(), &library.Job{
+	job := &library.Job{
 		Lib:       lib,
 		Type:      library.JobDownload,
-		Endpoints: []string{endPoint(gitProtocol, testRepo)},
 		TempFS:    h.TempFS,
 		AuthToken: func(string) string { return "" },
 		Logger:    log.New(nil),
-	})
+	}
+	job.SetEndpoints([]string{endPoint(gitProtocol, testRepo)})
 
+	err = Download(context.Background(), job)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), errBrokenFS.Error())
 }
@@ -195,14 +196,16 @@ func testAuthSuccess(t *testing.T, h *testhelper.Helper) {
 		t.Skip()
 	}
 
-	require.NoError(t, Download(context.Background(), &library.Job{
+	job := &library.Job{
 		Lib:       h.Lib,
 		Type:      library.JobDownload,
-		Endpoints: []string{endPoint(httpsProtocol, testPrivateRepo.repoIDs[0])},
 		TempFS:    h.TempFS,
 		AuthToken: func(string) string { return token },
 		Logger:    log.New(nil),
-	}))
+	}
+	job.SetEndpoints([]string{endPoint(httpsProtocol, testPrivateRepo.repoIDs[0])})
+
+	require.NoError(t, Download(context.Background(), job))
 }
 
 // testAuthErrors
@@ -212,14 +215,16 @@ func testAuthSuccess(t *testing.T, h *testhelper.Helper) {
 // <expected> error: authentication required
 func testAuthErrors(t *testing.T, h *testhelper.Helper) {
 	getJob := func(p protocol) *library.Job {
-		return &library.Job{
+		job := &library.Job{
 			Lib:       h.Lib,
 			Type:      library.JobDownload,
-			Endpoints: []string{endPoint(p, testPrivateRepo.repoIDs[0])},
 			TempFS:    h.TempFS,
 			AuthToken: func(string) string { return "42" },
 			Logger:    log.New(nil),
 		}
+		job.SetEndpoints([]string{endPoint(p, testPrivateRepo.repoIDs[0])})
+
+		return job
 	}
 
 	ctx := context.Background()
@@ -236,14 +241,16 @@ func testContextCancelledFail(t *testing.T, h *testhelper.Helper) {
 	cancel()
 
 	testRepo := tests[0].repoIDs[0]
-	require.Equal(t, fmt.Errorf("context canceled"), Download(ctx, &library.Job{
+	job := &library.Job{
 		Lib:       h.Lib,
 		Type:      library.JobDownload,
-		Endpoints: []string{endPoint(gitProtocol, testRepo)},
 		TempFS:    h.TempFS,
 		AuthToken: func(string) string { return "" },
 		Logger:    log.New(nil),
-	}))
+	}
+	job.SetEndpoints([]string{endPoint(gitProtocol, testRepo)})
+
+	require.Equal(t, fmt.Errorf("context canceled"), Download(ctx, job))
 }
 
 // testWrongEndpointFail
@@ -253,14 +260,16 @@ func testContextCancelledFail(t *testing.T, h *testhelper.Helper) {
 func testWrongEndpointFail(t *testing.T, h *testhelper.Helper) {
 	const corruptedEndpoint = "git://42.git"
 
-	err := Download(context.Background(), &library.Job{
+	job := &library.Job{
 		Lib:       h.Lib,
 		Type:      library.JobDownload,
-		Endpoints: []string{corruptedEndpoint},
 		TempFS:    h.TempFS,
 		AuthToken: func(string) string { return "" },
 		Logger:    log.New(nil),
-	})
+	}
+	job.SetEndpoints([]string{corruptedEndpoint})
+
+	err := Download(context.Background(), job)
 	require.Error(t, err)
 
 	e, ok := err.(*net.OpError)
@@ -279,11 +288,11 @@ func testAlreadyDownloadedFail(t *testing.T, h *testhelper.Helper) {
 	job := &library.Job{
 		Lib:       h.Lib,
 		Type:      library.JobDownload,
-		Endpoints: []string{endPoint(gitProtocol, testRepo)},
 		TempFS:    h.TempFS,
 		AuthToken: func(string) string { return "" },
 		Logger:    log.New(nil),
 	}
+	job.SetEndpoints([]string{endPoint(gitProtocol, testRepo)})
 
 	ctx := context.Background()
 	require.NoError(t, Download(ctx, job))
@@ -401,11 +410,11 @@ func concurrentDownloads(h *testhelper.Helper, p protocol) chan error {
 			job := &library.Job{
 				Lib:       h.Lib,
 				Type:      library.JobDownload,
-				Endpoints: []string{endPoint(p, id)},
 				TempFS:    h.TempFS,
 				AuthToken: func(string) string { return "" },
 				Logger:    log.New(nil),
 			}
+			job.SetEndpoints([]string{endPoint(p, id)})
 
 			jobs = append(jobs, job)
 		}

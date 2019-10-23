@@ -29,7 +29,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/src-d/envconfig v1.0.0 // indirect
 	github.com/src-d/go-borges v0.0.0-20190704083038-44867e8f2a2a
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.4.0
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2 // indirect
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
 	golang.org/x/net v0.0.0-20190628185345-da137c7871d7 // indirect
@@ -41,5 +41,6 @@ require (
 	gopkg.in/src-d/go-errors.v1 v1.0.0
 	gopkg.in/src-d/go-git.v4 v4.12.0
 	gopkg.in/src-d/go-log.v1 v1.0.2
+	gopkg.in/yaml.v2 v2.2.4 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
 )
