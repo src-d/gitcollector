@@ -128,6 +128,7 @@ func TestAll(t *testing.T) {
 		{"testAuthSuccess", testAuthSuccess},
 		{"testAuthErrors", testAuthErrors},
 		{"testContextCancelledFail", testContextCancelledFail},
+		{"testContextCancelledPrepareRepo", testContextCancelledPrepareRepo},
 		{"testWrongEndpointFail", testWrongEndpointFail},
 		{"testAlreadyDownloadedFail", testAlreadyDownloadedFail},
 		{"testDownloadConcurrentSuccess", testDownloadConcurrentSuccess},
@@ -250,7 +251,21 @@ func testContextCancelledFail(t *testing.T, h *testhelper.Helper) {
 	}
 	job.SetEndpoints([]string{endPoint(gitProtocol, testRepo)})
 
-	require.Equal(t, fmt.Errorf("context canceled"), Download(ctx, job))
+	require.Equal(t, context.Canceled, Download(ctx, job))
+}
+
+// testContextCancelledPrepareRepo
+// 1) tries to prepare a repository with a cancelled context. Previously this
+// caused a race condition now it should be correct.
+func testContextCancelledPrepareRepo(t *testing.T, h *testhelper.Helper) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	testRepo := tests[0].repoIDs[0]
+	repo, err := PrepareRepository(ctx, h.Lib, "location", testRepo,
+		endPoint(gitProtocol, testRepo), h.TempFS, "tmp")
+	require.Error(t, err)
+	require.Nil(t, repo)
 }
 
 // testWrongEndpointFail
