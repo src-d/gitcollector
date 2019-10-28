@@ -264,21 +264,8 @@ func createRootedRepo(
 		return nil, err
 	}
 
-	done := make(chan struct{})
-	go func() {
-		err = recursiveCopy(
-			"/", repo.FS(),
-			clonedPath, clonedFS,
-		)
-
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		err = ctx.Err()
-		repo.Close()
+	err = recursiveCopy(ctx, "/", repo.FS(), clonedPath, clonedFS)
+	if err != nil {
 		repo = nil
 	}
 
@@ -286,11 +273,18 @@ func createRootedRepo(
 }
 
 func recursiveCopy(
+	ctx context.Context,
 	dst string,
 	dstFS billy.Filesystem,
 	src string,
 	srcFS billy.Filesystem,
 ) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	stat, err := srcFS.Stat(src)
 	if err != nil {
 		return err
@@ -311,13 +305,13 @@ func recursiveCopy(
 			srcPath := filepath.Join(src, file.Name())
 			dstPath := filepath.Join(dst, file.Name())
 
-			err = recursiveCopy(dstPath, dstFS, srcPath, srcFS)
+			err = recursiveCopy(ctx, dstPath, dstFS, srcPath, srcFS)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
-		err = copyFile(dst, dstFS, src, srcFS, stat.Mode())
+		err = copyFile(ctx, dst, dstFS, src, srcFS, stat.Mode())
 		if err != nil {
 			return err
 		}
@@ -327,12 +321,19 @@ func recursiveCopy(
 }
 
 func copyFile(
+	ctx context.Context,
 	dst string,
 	dstFS billy.Filesystem,
 	src string,
 	srcFS billy.Filesystem,
 	mode os.FileMode,
 ) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	_, err := srcFS.Stat(src)
 	if err != nil {
 		return err
@@ -350,7 +351,7 @@ func copyFile(
 	}
 	defer fd.Close()
 
-	_, err = io.Copy(fd, fo)
+	_, err = io.Copy(fd, newContextReader(ctx, fo))
 	if err != nil {
 		fd.Close()
 		dstFS.Remove(dst)
@@ -358,4 +359,26 @@ func copyFile(
 	}
 
 	return nil
+}
+
+type contextReader struct {
+	reader io.Reader
+	ctx    context.Context
+}
+
+func newContextReader(ctx context.Context, reader io.Reader) *contextReader {
+	return &contextReader{
+		ctx:    ctx,
+		reader: reader,
+	}
+}
+
+func (c *contextReader) Read(p []byte) (n int, err error) {
+	select {
+	case <-c.ctx.Done():
+		return 0, c.ctx.Err()
+	default:
+	}
+
+	return c.reader.Read(p)
 }
