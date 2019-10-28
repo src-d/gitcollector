@@ -358,7 +358,7 @@ func testPeriodicallyBrokenGithubAPI(t *testing.T, h *testhelper.Helper) {
 	require.NoError(t, proxy.Start())
 	defer func() { proxy.Stop() }()
 
-	require.NoError(t, testutils.SetTransportProxy())
+	require.NoError(t, proxy.SetTransportProxy())
 
 	errs := concurrentDownloads(h, httpsProtocol)
 	var failedCounter int

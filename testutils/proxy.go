@@ -5,26 +5,26 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
-
 	"gopkg.in/src-d/go-log.v1"
 )
 
 const (
-	ip   = "localhost"
-	port = "8888"
-	addr = ip + ":" + port
-	URL  = "https://" + addr
-
 	pingInterval = 500 * time.Millisecond
 	pingTimeout  = 15 * time.Second
 )
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
 
 /*
 Current file provides functionality of https and http proxy with ability to mock up responses
@@ -47,7 +47,7 @@ Snippet:
 	proxy.Start()
 	defer func() { proxy.Stop() }()
 
-	require.NoError(t, testutils.SetTransportProxy())
+	require.NoError(t, proxy.SetTransportProxy())
 	...
 */
 
@@ -58,6 +58,7 @@ type Proxy struct {
 	mu        sync.Mutex
 	server    *http.Server
 	transport http.RoundTripper
+	port      string
 	// options for mock ups
 	options *Options
 	// FailEachNthRequestCounter is a counter required for failing condition on each nth request
@@ -92,9 +93,12 @@ type Options struct {
 // NewProxy is a proxy constructor
 func NewProxy(transport http.RoundTripper, options *Options) (*Proxy, error) {
 	processOptions(options)
+	port := strconv.Itoa(rand.Intn(10000) + 10000)
+
 	proxy := &Proxy{
 		transport: transport,
 		options:   options,
+		port:      port,
 		server: &http.Server{
 			Addr: ":" + port,
 			// Disable HTTP/2.
@@ -130,7 +134,7 @@ func (p *Proxy) Start() error {
 	bo.MaxInterval = pingInterval
 	bo.MaxElapsedTime = pingTimeout
 	return backoff.Retry(func() error {
-		conn, err := net.DialTimeout("tcp", addr, time.Second/2)
+		conn, err := net.DialTimeout("tcp", p.server.Addr, time.Second/2)
 		if err == nil {
 			conn.Close()
 			return nil
@@ -147,8 +151,8 @@ func (p *Proxy) Stop() {
 }
 
 // SetTransportProxy changes http.DefaultTransport to the one that uses current server as a proxy
-func SetTransportProxy() error {
-	u, err := url.Parse(URL)
+func (p *Proxy) SetTransportProxy() error {
+	u, err := url.Parse("https://localhost:" + p.port)
 	if err != nil {
 		return err
 	}
@@ -156,8 +160,9 @@ func SetTransportProxy() error {
 	http.DefaultTransport = &http.Transport{
 		Proxy: http.ProxyURL(u),
 		// Disable HTTP/2.
-		TLSNextProto:    make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSHandshakeTimeout: 2 * time.Second,
+		TLSNextProto:        make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}
 
 	return nil

@@ -272,9 +272,11 @@ func testProxyMockUp(t *testing.T, code int, errContains string) {
 	require.NoError(t, err)
 
 	require.NoError(t, proxy.Start())
-	defer func() { proxy.Stop() }()
+	defer func() {
+		proxy.Stop()
+	}()
 
-	require.NoError(t, testutils.SetTransportProxy())
+	require.NoError(t, proxy.SetTransportProxy())
 
 	queue := make(chan *github.Repository, 50)
 	advertiseRepos := func(
